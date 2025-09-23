@@ -8,7 +8,7 @@ export default function AppRoutes() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<DialogInput />} />
+        <Route path="/" element={<VoiceInput />} />
       </Routes>
     </Router>
   );

@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import AppLoader from './components/AppLoader'
-import Homepage from './components/Homepage'
-import DragHandle from './components/DragHandle'
+import React, { useState } from 'react';
+import { AppLoader } from './components/Layout';
+import { Home } from './pages';
+import { DragHandle } from './components/UI';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -17,7 +17,7 @@ function App() {
       {isLoading ? (
         <AppLoader onLoadingComplete={handleLoadingComplete} />
       ) : (
-        <Homepage />
+        <Home />
       )}
     </>
   )

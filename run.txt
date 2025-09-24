@@ -1,14 +1,20 @@
 Nox-Buddy - How to Run
 
-1. Navigate to frontend folder:
-   cd frontend
+Quick Start:
+cd frontend
+npm install
+npm run electron-dev
 
-2. Install dependencies (first time only):
-   npm install
+Commands:
+- npm run dev (React only)
+- npm run electron-dev (Full app)
+- npm run build (Production)
 
-3. Start Electron app:
-   npm run electron-dev
+Windows Setup:
+1. Install Node.js from https://nodejs.org (includes npm)
+2. Restart PowerShell/Command Prompt
+3. Place NoX_Backend 1.exe in /backend/ for full AI
+4. Closes to system tray (stays running in background)
+5. Right-click tray icon for options
 
-This will start both the React dev server and Electron app together.
-
-Note: If you get an error about missing electron.cjs, the main file has been restored in public/main/electron.cjs
+macOS/Linux: Demo mode automatically enabled

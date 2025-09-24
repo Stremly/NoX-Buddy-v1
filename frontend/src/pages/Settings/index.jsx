@@ -11,6 +11,7 @@ const Settings = ({ onClose, isDarkMode, setIsDarkMode }) => {
     buddyName: 'Nox-Buddy',
     email: ''
   });
+  const [autoStartEnabled, setAutoStartEnabled] = useState(false);
 
   useEffect(() => {
     // Load user data from localStorage
@@ -23,6 +24,22 @@ const Settings = ({ onClose, isDarkMode, setIsDarkMode }) => {
         email: parsedData.email || ''
       });
     }
+
+    // Load auto-start setting
+    const loadAutoStart = async () => {
+      if (window.electronAPI) {
+        try {
+          const result = await window.electronAPI.getAutoStart();
+          if (result.success) {
+            setAutoStartEnabled(result.enabled);
+          }
+        } catch (error) {
+          console.error('Failed to get auto-start status:', error);
+        }
+      }
+    };
+    
+    loadAutoStart();
   }, []);
 
   const saveProfile = () => {
@@ -42,10 +59,24 @@ const Settings = ({ onClose, isDarkMode, setIsDarkMode }) => {
     window.location.reload();
   };
 
+  const handleAutoStartToggle = async () => {
+    if (window.electronAPI) {
+      try {
+        const newValue = !autoStartEnabled;
+        const result = await window.electronAPI.setAutoStart(newValue);
+        if (result.success) {
+          setAutoStartEnabled(newValue);
+        }
+      } catch (error) {
+        console.error('Failed to set auto-start:', error);
+      }
+    }
+  };
+
   const tabs = [
     { id: 'profile', label: 'Profile', icon: 'user' },
     { id: 'theme', label: 'Theme', icon: 'palette' },
-    { id: 'reminders', label: 'Reminders', icon: 'bell' },
+    { id: 'system', label: 'System', icon: 'settings' },
     { id: 'memory', label: 'Memory', icon: 'brain' }
   ];
 
@@ -63,12 +94,11 @@ const Settings = ({ onClose, isDarkMode, setIsDarkMode }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
           </svg>
         );
-      case 'bell':
+      case 'settings':
         return (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         );
       case 'brain':
@@ -202,29 +232,42 @@ const Settings = ({ onClose, isDarkMode, setIsDarkMode }) => {
           </div>
         );
 
-      case 'reminders':
+      case 'system':
         return (
           <div className="space-y-4 lg:space-y-6">
             <div>
               <h3 className={`text-lg lg:text-xl font-semibold mb-3 lg:mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                Reminders
+                System Settings
               </h3>
-              <div className={`p-6 lg:p-8 rounded-3xl border-2 border-dashed text-center ${
-                isDarkMode ? 'border-gray-700 bg-gray-800/30' : 'border-gray-300 bg-gray-50'
-              }`}>
-                <div className={`w-10 h-10 lg:w-12 lg:h-12 mx-auto mb-3 lg:mb-4 rounded-full flex items-center justify-center ${
-                  isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
-                }`}>
-                  <svg className={`w-5 h-5 lg:w-6 lg:h-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5z" />
-                  </svg>
+              <div className="space-y-3 lg:space-y-4">
+                <div className={`p-3 lg:p-4 rounded-3xl border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <h4 className={`font-medium text-sm lg:text-base ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        Start with Windows
+                      </h4>
+                      <p className={`text-xs lg:text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Automatically start Nox-Buddy when Windows starts
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleAutoStartToggle}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
+                      style={{ backgroundColor: autoStartEnabled ? '#1B365D' : '#E5E7EB' }}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          autoStartEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
-                <h4 className={`font-medium mb-2 text-sm lg:text-base ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  Reminders Coming Soon
-                </h4>
-                <p className={`text-xs lg:text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Set up and manage your personal reminders and notifications.
-                </p>
+                <div className={`p-3 lg:p-4 rounded-3xl border ${isDarkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+                  <p className={`text-xs lg:text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    When enabled, Nox-Buddy will start automatically when you log into Windows, running in the background with system tray access.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

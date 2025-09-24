@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Settings from '../Settings';
 import VoiceRecording from '../VoiceRecording';
+import noxServiceManager from '../../services/noxServiceManager';
 
 const Homepage = () => {
   const [inputText, setInputText] = useState('');
@@ -12,6 +13,7 @@ const Homepage = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showVoiceRecording, setShowVoiceRecording] = useState(false);
+  const [showPlatformNotice, setShowPlatformNotice] = useState(false);
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -21,10 +23,36 @@ const Homepage = () => {
     }
   ]);
 
+  // Check platform compatibility on component mount
+  useEffect(() => {
+    const platformMessage = noxServiceManager.getPlatformMessage();
+    if (platformMessage) {
+      setShowPlatformNotice(true);
+      // Add platform notice to messages
+      setTimeout(() => {
+        setMessages(prev => {
+          // Check if system message already exists
+          const hasSystemMessage = prev.some(msg => msg.isSystemMessage);
+          if (hasSystemMessage) {
+            return prev; // Don't add duplicate
+          }
+          
+          return [...prev, {
+            id: Date.now(),
+            text: platformMessage,
+            isBot: true,
+            isSystemMessage: true,
+            timestamp: new Date()
+          }];
+        });
+      }, 1000);
+    }
+  }, []);
 
-  const handleSendMessage = () => {
+
+  const handleSendMessage = async () => {
     if (inputText.trim() || attachedFiles.length > 0) {
-      const newMessage = {
+      const userMessage = {
         id: Date.now(),
         text: inputText,
         files: [...attachedFiles],
@@ -32,20 +60,50 @@ const Homepage = () => {
         timestamp: new Date()
       };
       
-      setMessages([...messages, newMessage]);
+      setMessages(prev => [...prev, userMessage]);
+      const messageText = inputText;
       setInputText('');
       setAttachedFiles([]);
       
-      // Simulate bot response
-      setTimeout(() => {
-        const botResponse = {
-          id: Date.now() + 1,
-          text: "I received your message. Let me help you with that!",
-          isBot: true,
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, botResponse]);
-      }, 1000);
+      // Show typing indicator
+      const typingMessage = {
+        id: Date.now() + 1,
+        text: "Nox is thinking...",
+        isBot: true,
+        isTyping: true,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, typingMessage]);
+      
+      try {
+        // Send message to Nox service
+        const response = await noxServiceManager.sendMessage(messageText);
+        
+        // Remove typing indicator and add real response
+        setMessages(prev => {
+          const filtered = prev.filter(msg => !msg.isTyping);
+          return [...filtered, {
+            id: Date.now() + 2,
+            text: response || "I'm here to help! Could you please rephrase your question?",
+            isBot: true,
+            timestamp: new Date()
+          }];
+        });
+        
+      } catch (error) {
+        console.error('Error getting response from Nox:', error);
+        
+        // Remove typing indicator and show error message
+        setMessages(prev => {
+          const filtered = prev.filter(msg => !msg.isTyping);
+          return [...filtered, {
+            id: Date.now() + 2,
+            text: "I'm having trouble connecting right now. Please try again in a moment.",
+            isBot: true,
+            timestamp: new Date()
+          }];
+        });
+      }
     }
   };
 
@@ -137,13 +195,26 @@ const Homepage = () => {
           >
             <div
               className={`max-w-xs lg:max-w-md px-4 py-3 rounded-3xl ${
-                message.isBot
+                message.isSystemMessage
+                  ? isDarkMode ? 'bg-blue-900/30 text-blue-300 border border-blue-500/30' : 'bg-blue-50 text-blue-800 border border-blue-200'
+                  : message.isBot
                   ? isDarkMode ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'
                   : 'text-white'
               }`}
-              style={!message.isBot ? { backgroundColor: '#1B365D' } : {}}
+              style={!message.isBot && !message.isSystemMessage ? { backgroundColor: '#1B365D' } : {}}
             >
-              <p className="text-sm">{message.text}</p>
+              {message.isTyping ? (
+                <div className="flex items-center space-x-1">
+                  <p className="text-sm">{message.text}</p>
+                  <div className="flex space-x-1 ml-2">
+                    <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
+                    <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                    <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm">{message.text}</p>
+              )}
               {message.files && message.files.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {message.files.map((file, index) => (

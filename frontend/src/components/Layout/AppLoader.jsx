@@ -1,8 +1,9 @@
 // AppLoader.jsx - Beautiful loading screen for Nox-Buddy app launch
 // Modern, minimal, and professional design with linear progress
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import noxServiceManager from '../../services/noxServiceManager';
 
 const AppLoader = ({ onLoadingComplete }) => {
   const [progress, setProgress] = useState(0);
@@ -14,23 +15,80 @@ const AppLoader = ({ onLoadingComplete }) => {
   const [userName, setUserName] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [autoStartEnabled, setAutoStartEnabled] = useState(true);
+  const [showAutoStartOption, setShowAutoStartOption] = useState(false);
+
+  // Initialize auto-start setting
+  useEffect(() => {
+    const initAutoStart = async () => {
+      if (window.electronAPI) {
+        try {
+          const result = await window.electronAPI.getAutoStart();
+          if (result.success) {
+            setAutoStartEnabled(result.enabled);
+          }
+        } catch (error) {
+          console.error('Failed to get auto-start status:', error);
+        }
+      }
+    };
+    
+    initAutoStart();
+    
+    // Show auto-start option after 1 second
+    setTimeout(() => {
+      setShowAutoStartOption(true);
+    }, 1000);
+  }, []);
+
+  // Handle auto-start toggle
+  const handleAutoStartToggle = async () => {
+    if (window.electronAPI) {
+      try {
+        const newValue = !autoStartEnabled;
+        const result = await window.electronAPI.setAutoStart(newValue);
+        if (result.success) {
+          setAutoStartEnabled(newValue);
+        }
+      } catch (error) {
+        console.error('Failed to set auto-start:', error);
+      }
+    }
+  };
 
   useEffect(() => {
     const loadingSteps = [
       { progress: 0, text: 'Initializing...', duration: 500 },
       { progress: 25, text: 'Loading components...', duration: 600 },
-      { progress: 50, text: 'Setting up environment...', duration: 600 },
+      { progress: 50, text: 'Starting Nox Backend...', duration: 800 },
       { progress: 75, text: 'Preparing interface...', duration: 600 },
       { progress: 100, text: 'Almost there!', duration: 700 }
     ];
 
     let currentStep = 0;
     
-    const runLoadingStep = () => {
+    const runLoadingStep = async () => {
       if (currentStep < loadingSteps.length) {
         const step = loadingSteps[currentStep];
         setProgress(step.progress);
         setLoadingText(step.text);
+        
+        // Special handling for backend startup step
+        if (step.progress === 50) {
+          try {
+            await noxServiceManager.startBackend();
+            console.log('✅ Nox Service started during loading');
+            
+            // Update loading text based on service type
+            const platformMsg = noxServiceManager.getPlatformMessage();
+            if (platformMsg) {
+              setLoadingText('Demo mode active...');
+            }
+          } catch (error) {
+            console.error('❌ Failed to start service during loading:', error);
+            setLoadingText('Service startup failed, continuing...');
+          }
+        }
         
         setTimeout(() => {
           currentStep++;
@@ -218,6 +276,60 @@ const AppLoader = ({ onLoadingComplete }) => {
                     {progress}%
                   </motion.span>
                 </div>
+
+                {/* Auto-start Option */}
+                <AnimatePresence>
+                  {showAutoStartOption && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.3 }}
+                      className="mt-4 pt-3 border-t border-gray-200"
+                    >
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={autoStartEnabled}
+                            onChange={handleAutoStartToggle}
+                            className="sr-only"
+                          />
+                          <div className="relative">
+                            <div 
+                              className={`w-4 h-4 rounded border-2 transition-all duration-200 ${
+                                autoStartEnabled 
+                                  ? 'border-blue-600 bg-blue-600' 
+                                  : 'border-gray-300 bg-white'
+                              }`}
+                              style={{ 
+                                borderColor: autoStartEnabled ? '#1B365D' : '#d1d5db',
+                                backgroundColor: autoStartEnabled ? '#1B365D' : 'white'
+                              }}
+                            >
+                              {autoStartEnabled && (
+                                <svg 
+                                  className="w-3 h-3 text-white absolute top-0.5 left-0.5" 
+                                  fill="currentColor" 
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path 
+                                    fillRule="evenodd" 
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" 
+                                    clipRule="evenodd" 
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                          <span className="ml-3 text-xs text-gray-600">
+                            Start with Windows
+                          </span>
+                        </label>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             </div>
           ) : (

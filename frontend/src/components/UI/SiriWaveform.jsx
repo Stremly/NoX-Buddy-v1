@@ -66,7 +66,7 @@ const SiriWaveform = ({
         audio: {
           echoCancellation: false, // Better for voice detection
           noiseSuppression: false, // Better for voice detection
-          autoGainControl: true,
+          autoGainControl: false,  // Better for natural voice levels
           sampleRate: 44100,
           channelCount: 1
         } 
@@ -152,20 +152,31 @@ const SiriWaveform = ({
       }
       const voiceAverage = voiceSum / (voiceEnd - voiceStart);
       
-      // Combine RMS and voice frequency analysis
-      const combinedAmplitude = (rms * 3) + (voiceAverage / 255 * 2);
+      // More responsive amplitude calculation
+      let finalAmplitude;
       
-      // Enhanced scaling with voice detection
-      const normalizedAmplitude = Math.min(combinedAmplitude * 2, 4);
+      if (rms > 0.05) {
+        // Strong voice detected - high amplitude
+        finalAmplitude = Math.min(2 + (rms * 8), 5);
+      } else if (rms > 0.02) {
+        // Normal voice detected - medium amplitude  
+        finalAmplitude = Math.min(1 + (rms * 6), 3);
+      } else if (rms > 0.005) {
+        // Quiet voice detected - low amplitude
+        finalAmplitude = Math.min(0.5 + (rms * 4), 1.5);
+      } else {
+        // No voice or very quiet - baseline
+        finalAmplitude = 0.2 + (voiceAverage / 255 * 0.3);
+      }
       
       // Update SiriWave amplitude using correct API
       try {
-        // Dynamic minimum based on voice activity
-        const minAmplitude = rms > 0.01 ? 0.8 : 0.3;
-        const finalAmplitude = Math.max(normalizedAmplitude, minAmplitude);
         siriWaveRef.current.setAmplitude(finalAmplitude);
         
-        // Voice activity detected - no logging for production
+        // Debug logging for voice levels (remove in production)
+        if (rms > 0.01) {
+          console.log(`🎤 Voice Level - RMS: ${rms.toFixed(3)}, Amplitude: ${finalAmplitude.toFixed(2)}`);
+        }
       } catch (error) {
         console.error('SiriWave setAmplitude error:', error);
       }

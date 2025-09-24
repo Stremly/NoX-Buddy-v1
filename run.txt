@@ -1,0 +1,14 @@
+Nox-Buddy - How to Run
+
+1. Navigate to frontend folder:
+   cd frontend
+
+2. Install dependencies (first time only):
+   npm install
+
+3. Start Electron app:
+   npm run electron-dev
+
+This will start both the React dev server and Electron app together.
+
+Note: If you get an error about missing electron.cjs, the main file has been restored in public/main/electron.cjs

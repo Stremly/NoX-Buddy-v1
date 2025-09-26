@@ -15,4 +15,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   setAutoStart: (enabled) =>
     ipcRenderer.send("set-auto-start", enabled),
+
+  getNotificationSound: () => ipcRenderer.invoke('get-notification-sound'),
+  setNotificationSound: (filePath) => ipcRenderer.invoke('set-notification-sound', filePath),
+  resetNotificationSound: () => ipcRenderer.invoke('reset-notification-sound'),
+  selectSoundFile: () => ipcRenderer.invoke('select-sound-file'),
+  testNotificationSound: () => ipcRenderer.invoke('test-notification-sound'),
+  onBackgroundNotification: (cb) => {
+    ipcRenderer.on('show-background-notification', (event, ...args) => cb(...args));
+  },
+  
 });

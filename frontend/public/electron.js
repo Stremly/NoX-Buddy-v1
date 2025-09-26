@@ -1,12 +1,72 @@
-const { app, BrowserWindow, Tray, Menu, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, Notification } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { spawn } = require('child_process');
+const player = require('node-wav-player');
+
 const configPath = path.join(__dirname, "settings.json");
 
 let win;
 let tray = null;
 let isQuitting = false;
 let hasShownTrayNotification = false;
+
+
+const DEFAULT_SOUND_PATH = path.join(__dirname, "sounds", "default-notification.mp3");
+const SOUNDS_DIR = path.join(__dirname, "sounds");
+
+
+if (!fs.existsSync(SOUNDS_DIR)) {
+  fs.mkdirSync(SOUNDS_DIR, { recursive: true });
+}
+
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+  return { autoStart: false, notificationSound: null };
+}
+
+
+function saveSettings(settings) {
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(settings, null, 2));
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
+}
+
+let audioWin = null;
+
+function formatFilePath(filePath) {
+  return encodeURI(filePath.replace(/\\/g, '/'));
+}
+
+
+function playNotificationSound() {
+  const settings = loadSettings();
+  const soundPath = settings.notificationSound || DEFAULT_SOUND_PATH;
+
+  if (!fs.existsSync(soundPath)) {
+    console.error("Sound file does not exist:", soundPath);
+    return;
+  }
+
+  player.play({
+    path: soundPath,
+    sync: false, 
+  }).then(() => {
+    console.log("Notification sound played successfully");
+  }).catch((error) => {
+    console.error("Error playing sound:", error);
+  });
+}
+
 
 function createWindow() {
   win = new BrowserWindow({
@@ -28,15 +88,12 @@ function createWindow() {
   // Wait for the page to be fully ready before starting progress
   win.webContents.on('did-finish-load', () => {
     const currentURL = win.webContents.getURL();
-    console.log("Page loaded:", currentURL); // Debug log
+    console.log("Page loaded:", currentURL);
     
-    // Only run installation simulation on the installer page and only once
     if (currentURL.includes("/installer") && !installationCompleted) {
-      // Give the React component a moment to set up its listeners
       setTimeout(() => {
         let progress = 0;
         const interval = setInterval(() => {
-          // Check if we should stop (in case navigation happened)
           if (installationCompleted || !win || win.isDestroyed()) {
             clearInterval(interval);
             return;
@@ -50,15 +107,14 @@ function createWindow() {
           }
           
           if (progress >= 100) {
-            installationCompleted = true; // Mark as completed
+            installationCompleted = true;
             clearInterval(interval);
             console.log("Installation complete");
             win.webContents.send("install-done");
 
             setTimeout(() => {
-              // Only navigate if we're still on the installer page
               if (win && !win.isDestroyed() && win.webContents.getURL().includes("/installer")) {
-                win.loadURL("http://localhost:3000/signin");
+                win.loadURL("http://localhost:3000/settings");
               }
             }, 1500);
           }
@@ -133,11 +189,32 @@ function hideWindow() {
 
           if (tray && !hasShownTrayNotification) {
             hasShownTrayNotification = true;
+
             setTimeout(() => {
-              tray.displayBalloon({
-                title: "NoX Buddy is running in background",
-                content: "Click the tray icon to restore the window.",
-              });
+              // Play notification sound
+              playNotificationSound();
+              
+              // Windows-specific balloon notification
+              const { Notification } = require("electron");
+                  if (Notification.isSupported()) {
+      const notification = new Notification({
+        title: "NoX Buddy is running in background",
+        body: "Click the tray icon to restore the window.",
+        icon: path.join(__dirname, "logo-stremly.png"), // use your app icon
+        silent: true, // we already play custom sound above
+      });
+
+      notification.on("click", () => {
+        showWindow();
+      });
+
+      notification.show();
+    }
+
+              // Tell renderer to show notification cross-platform
+              if (win && !win.isDestroyed()) {
+                win.webContents.send("show-background-notification");
+              }
             }, 200);
           }
         }, 50);
@@ -169,20 +246,64 @@ function showWindow() {
   }
 }
 
+// IPC handlers for sound settings
+ipcMain.handle('get-notification-sound', () => {
+  const settings = loadSettings();
+  return settings.notificationSound;
+});
+
+ipcMain.handle('set-notification-sound', async (event, filePath) => {
+  const settings = loadSettings();
+  settings.notificationSound = filePath;
+  saveSettings(settings);
+  return { success: true };
+});
+
+ipcMain.handle('reset-notification-sound', async () => {
+  const settings = loadSettings();
+  settings.notificationSound = null;
+  saveSettings(settings);
+  return { success: true };
+});
+
+ipcMain.handle('select-sound-file', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Select Notification Sound',
+    filters: [
+      { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+  
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0];
+  }
+  return null;
+});
+
+ipcMain.handle('test-notification-sound', () => {
+  playNotificationSound();
+  return { success: true };
+});
+
 // Handle auto-start toggle
 ipcMain.on("set-auto-start", (event, enabled) => {
   app.setLoginItemSettings({
     openAtLogin: enabled,
     path: app.getPath("exe"),
   });
-  let config = { autoStart: enabled };
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  const settings = loadSettings();
+  settings.autoStart = enabled;
+  saveSettings(settings);
   console.log("Auto-start set to:", enabled);
 });
 
 app.whenReady().then(() => {
   createWindow();
   createTray();
+  app.setAppUserModelId("NoX Buddy");
+
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -190,7 +311,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", (event) => {
-  event.preventDefault(); // App stays in tray
+  event.preventDefault();
 });
 
 app.on("before-quit", (event) => {

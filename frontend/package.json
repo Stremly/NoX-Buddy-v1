@@ -9,11 +9,15 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
     "docx-preview": "^0.3.6",
+    "electron-store": "^10.1.0",
     "framer-motion": "^12.23.18",
+    "node-wav-player": "^1.0.0",
+    "play-sound": "^1.1.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.1",
     "react-scripts": "5.0.1",
+    "vosk-browser": "^0.0.8",
     "web-vitals": "^2.1.4"
   },
   "scripts": {

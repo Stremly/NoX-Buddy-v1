@@ -1,3 +1,4 @@
 {
-  "autoStart": false
+  "autoStart": true,
+  "notificationSound": "C:\\Users\\hp\\OneDrive\\Desktop\\COMCell_Message 1 (ID 1111)_BSB.wav"
 }

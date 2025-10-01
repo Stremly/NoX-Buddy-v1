@@ -6,7 +6,7 @@ require("dotenv").config();
 
 let mainWindow;
 let backendProcess;
-
+let isCompact = false;
 
 const isDev = !app.isPackaged;
 const backendURL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
@@ -18,6 +18,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1024,
     height: 768,
+    minWidth: 300,
+    minHeight: 50,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -61,10 +63,30 @@ async function startBackend() {
   }
 }
 
-// Quit app cleanly
+// Quit app 
 ipcMain.on("quit-app", () => {
   if (backendProcess) backendProcess.kill();
   app.quit();
+});
+
+
+//Toggle Size Logic
+ipcMain.on("toggle-view", () => {
+  if (!mainWindow) return;
+
+  if (isCompact) {
+    //Expanded
+    mainWindow.setBounds({ width: 900, height: 700 });
+    mainWindow.center();
+    mainWindow.setResizable(true);
+    isCompact = false;
+  } else {
+    //Compact 
+    mainWindow.setBounds({ width: 650, height: 450 });
+    mainWindow.center();
+    mainWindow.setResizable(false);
+    isCompact = true;
+  }
 });
 
 app.on("ready", async () => {

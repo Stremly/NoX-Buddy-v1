@@ -1,0 +1,39 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# React build
+frontend/build/
+
+# Electron build output
+dist/
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.spec
+*.egg-info/
+backend/build/
+backend/dist/
+backend/*.exe
+
+# Virtual environments
+.venv/
+venv/
+
+# Env & secrets
+.env
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

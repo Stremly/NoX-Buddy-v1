@@ -5,14 +5,14 @@ import axios from "axios";
 export default function Loading() {
   const navigate = useNavigate();
   const [status, setStatus] = useState("Please wait while we connect to the backend...");
-  const [progress, setProgress] = useState(0); // for progress bar
-  const [fade, setFade] = useState(true); // for smooth text transitions
+  const [progress, setProgress] = useState(0);
+  const [fade, setFade] = useState(true); 
 
 
   useEffect(() => {
     const backendURL = "http://127.0.0.1:8000"; // backend URL
     let attempts = 0;
-    const maxAttempts = 10; // max retries (~10s)
+    const maxAttempts = 10; 
 
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -32,7 +32,7 @@ export default function Loading() {
             prog += 5;
             if (prog >= 100) {
               clearInterval(progInterval);
-              navigate("/home");
+              navigate("/signin");
             }
             setProgress(prog);
           }, 50);

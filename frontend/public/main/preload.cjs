@@ -26,6 +26,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeToTray: () => ipcRenderer.invoke('minimize-to-tray'),
   showFromTray: () => ipcRenderer.invoke('show-from-tray'),
 
+  // Window resize functionality for minimize
+  resizeWindowForMinimize: () => {
+    console.log('🔽 Preload: Calling resize-window-for-minimize');
+    return ipcRenderer.invoke('resize-window-for-minimize');
+  },
+  restoreWindowFromMinimize: () => {
+    console.log('🔼 Preload: Calling restore-window-from-minimize');
+    return ipcRenderer.invoke('restore-window-from-minimize');
+  },
+  expandWindowForConversation: (height) => {
+    console.log('🔼 Preload: Calling expand-window-for-conversation with height:', height);
+    return ipcRenderer.invoke('expand-window-for-conversation', height);
+  },
+  collapseWindowToSearchbar: () => {
+    console.log('🔽 Preload: Calling collapse-window-to-searchbar');
+    return ipcRenderer.invoke('collapse-window-to-searchbar');
+  },
+
+  // Debug function to test API availability
+  testAPI: () => {
+    console.log('🧪 Testing Electron API availability');
+    return { success: true, message: 'Electron API is working' };
+  },
+
   // Auto-start functionality
   setAutoStart: (enabled) => ipcRenderer.invoke('set-auto-start', enabled),
   getAutoStart: () => ipcRenderer.invoke('get-auto-start')

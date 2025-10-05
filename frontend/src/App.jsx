@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppLoader } from './components/Layout';
-import { Home } from './pages';
+import { Dashboard } from './pages';
 import { DragHandle } from './components/UI';
 
 function App() {
@@ -8,7 +8,7 @@ function App() {
 
   const handleLoadingComplete = () => {
     setIsLoading(false)
-    console.log('Secret code authentication completed! Ready to launch Electron app...')
+    console.log('Authentication completed! Loading dashboard...')
   }
 
   return (
@@ -17,7 +17,7 @@ function App() {
       {isLoading ? (
         <AppLoader onLoadingComplete={handleLoadingComplete} />
       ) : (
-        <Home />
+        <Dashboard />
       )}
     </>
   )

@@ -12,7 +12,7 @@ let hasShownTrayNotification = false;
 function createWindow() {
   // Create the browser window
   mainWindow = new BrowserWindow({
-    width: 400,
+    width: 1200,
     height: 800,
     webPreferences: {
       nodeIntegration: false,
@@ -21,11 +21,14 @@ function createWindow() {
       webSecurity: true,
       preload: path.join(__dirname, 'preload.cjs')
     },
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    titleBarStyle: 'customButtonsOnHover',
     frame: false,
     resizable: false,
     movable: true,
     show: false,
+    transparent: false,
+    hasShadow: true,
+    vibrancy: false,
     icon: path.join(__dirname, '../favicon.ico')
   });
 
@@ -352,6 +355,180 @@ ipcMain.handle('minimize-to-tray', () => {
 ipcMain.handle('show-from-tray', () => {
   showWindow();
   return { success: true };
+});
+
+// Window resize handlers for minimize functionality
+ipcMain.handle('resize-window-for-minimize', () => {
+  console.log('🔽 Received resize-window-for-minimize IPC call');
+  
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      // Store original size for restoration
+      const currentBounds = mainWindow.getBounds();
+      console.log('📏 Current window bounds:', currentBounds);
+      mainWindow.originalBounds = currentBounds;
+      
+      // Calculate new position (bottom-right of screen, not current window)
+      const { screen } = require('electron');
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+      
+      // Spotlight-like dimensions - optimized for search bar
+      const newWidth = 600;  // Perfect width for search bar
+      const newHeight = 56;  // Compact height for single-line input
+      
+      // Center horizontally, position in upper third like Spotlight
+      const newX = Math.round((screenWidth - newWidth) / 2);
+      const newY = Math.round(screenHeight * 0.25); // 25% from top like Spotlight
+      
+      console.log('📐 New window size and position:', { width: newWidth, height: newHeight, x: newX, y: newY });
+      console.log('📺 Screen dimensions:', { screenWidth, screenHeight });
+      
+      // Hide window first to avoid visible resize animation
+      mainWindow.hide();
+      
+      // Resize to floating window size (no animation)
+      mainWindow.setSize(newWidth, newHeight, false);
+      mainWindow.setPosition(newX, newY, false);
+      mainWindow.setResizable(false); // Disable manual resizing
+      mainWindow.setAlwaysOnTop(true);
+      
+      // Show window after resize is complete
+      setTimeout(() => {
+        mainWindow.show();
+      }, 50);
+      
+      console.log('✅ Window resized successfully for minimize');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error resizing window:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  console.error('❌ Main window not available');
+  return { success: false, error: 'Window not available' };
+});
+
+// Dynamic resize for conversation expansion
+ipcMain.handle('expand-window-for-conversation', (event, messageCount = 1) => {
+  console.log('🔼 Received expand-window-for-conversation IPC call with messageCount:', messageCount);
+  
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      const currentBounds = mainWindow.getBounds();
+      const { screen } = require('electron');
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+      
+      // Calculate optimal height based on message count
+      const baseHeight = 120; // Header + input area
+      const messageHeight = 70; // Average height per message (including spacing)
+      const calculatedHeight = baseHeight + (messageCount * messageHeight);
+      const maxHeight = Math.round(Math.min(calculatedHeight, screenHeight * 0.7)); // Max 70% of screen
+      const minHeight = 200; // Minimum conversation height
+      const maxScrollHeight = 500; // Maximum height before scrolling kicks in
+      
+      // Use scroll height limit for better UX
+      const finalHeight = Math.max(minHeight, Math.min(calculatedHeight, maxScrollHeight));
+      const newWidth = Math.max(currentBounds.width, 600); // Ensure minimum width
+      
+      // Recalculate position to keep centered
+      const newX = Math.round((screenWidth - newWidth) / 2);
+      const newY = Math.round(screenHeight * 0.25); // Keep same Y position as search bar
+      
+      console.log('📐 Expanding to:', { width: newWidth, height: finalHeight, x: newX, y: newY });
+      
+      // Animate to new size
+      mainWindow.setSize(newWidth, finalHeight, true);
+      mainWindow.setPosition(newX, newY, true);
+      mainWindow.setResizable(false); // Ensure no resizing after expansion
+      
+      console.log('✅ Window expanded for conversation');
+      return { success: true, width: newWidth, height: finalHeight };
+    } catch (error) {
+      console.error('❌ Error expanding window:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  return { success: false, error: 'Window not available' };
+});
+
+// Collapse back to search bar
+ipcMain.handle('collapse-window-to-searchbar', () => {
+  console.log('🔽 Received collapse-window-to-searchbar IPC call');
+  
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      const currentBounds = mainWindow.getBounds();
+      const { screen } = require('electron');
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+      
+      // Return to search bar dimensions
+      const searchBarWidth = 600; // Same as minimize width
+      const searchBarHeight = 56; // Same as minimize height
+      
+      // Recalculate center position
+      const newX = Math.round((screenWidth - searchBarWidth) / 2);
+      const newY = Math.round(screenHeight * 0.25); // Same as minimize position
+      
+      console.log('📐 Collapsing to:', { width: searchBarWidth, height: searchBarHeight, x: newX, y: newY });
+      
+      // Animate back to search bar size
+      mainWindow.setSize(searchBarWidth, searchBarHeight, true);
+      mainWindow.setPosition(newX, newY, true);
+      mainWindow.setResizable(false); // Ensure no resizing after collapse
+      
+      console.log('✅ Window collapsed to search bar');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error collapsing window:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  return { success: false, error: 'Window not available' };
+});
+
+ipcMain.handle('restore-window-from-minimize', () => {
+  console.log('🔼 Received restore-window-from-minimize IPC call');
+  
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      // Hide window first to avoid visible resize animation
+      mainWindow.hide();
+      
+      // Restore original size and position (no animation)
+      if (mainWindow.originalBounds) {
+        console.log('📏 Restoring to original bounds:', mainWindow.originalBounds);
+        mainWindow.setBounds(mainWindow.originalBounds, false);
+      } else {
+        // Fallback to default size
+        console.log('📏 No original bounds, using default size');
+        mainWindow.setSize(1200, 800, false);
+        mainWindow.center();
+      }
+      
+      mainWindow.setResizable(false); // Keep resizable false as per original config
+      mainWindow.setAlwaysOnTop(false);
+      
+      // Show window after resize is complete
+      setTimeout(() => {
+        mainWindow.show();
+      }, 50);
+      
+      console.log('✅ Window restored successfully');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error restoring window:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  console.error('❌ Main window not available');
+  return { success: false, error: 'Window not available' };
 });
 
 // Auto-start functionality

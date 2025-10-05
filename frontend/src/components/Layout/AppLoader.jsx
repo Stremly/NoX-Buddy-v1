@@ -13,8 +13,10 @@ const AppLoader = ({ onLoadingComplete }) => {
   const [storedUser, setStoredUser] = useState(null);
   const [secretCode, setSecretCode] = useState('');
   const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [authMode, setAuthMode] = useState('signup'); // 'signup' or 'signin'
   const [autoStartEnabled, setAutoStartEnabled] = useState(true);
   const [showAutoStartOption, setShowAutoStartOption] = useState(false);
 
@@ -114,8 +116,7 @@ const AppLoader = ({ onLoadingComplete }) => {
       const userData = localStorage.getItem('nox-buddy-user');
       if (userData) {
         const parsedUser = JSON.parse(userData);
-        setStoredUser(parsedUser);
-        // Auto-login existing user
+        // Auto-login existing user - direct redirect to dashboard
         setLoadingText(`Welcome back, ${parsedUser.name}!`);
         setTimeout(() => {
           setIsVisible(false);
@@ -125,6 +126,7 @@ const AppLoader = ({ onLoadingComplete }) => {
         }, 1000);
         return;
       }
+      // No user data found, show auth screen
       setShowSecretCodeScreen(true);
     } catch (error) {
       console.error('Error reading stored user data:', error);
@@ -143,18 +145,6 @@ const AppLoader = ({ onLoadingComplete }) => {
     return result;
   };
 
-  // Handle login with stored user
-  const handleStoredUserLogin = async () => {
-    setError('');
-    setSuccess(`Welcome back, ${storedUser.name}!`);
-    
-    setTimeout(() => {
-      setIsVisible(false);
-      setTimeout(() => {
-        onLoadingComplete();
-      }, 500);
-    }, 1500);
-  };
 
   // Handle new secret code generation
   const handleGenerateNewCode = () => {
@@ -163,8 +153,8 @@ const AppLoader = ({ onLoadingComplete }) => {
     setSuccess(`New secret code generated: ${newCode}`);
   };
 
-  // Handle secret code submission
-  const handleSecretCodeSubmit = () => {
+  // Handle secret code submission for signup
+  const handleSignupSubmit = () => {
     if (!secretCode.trim()) {
       setError('Please enter or generate a secret code');
       return;
@@ -175,12 +165,18 @@ const AppLoader = ({ onLoadingComplete }) => {
       return;
     }
 
+    if (!userEmail.trim()) {
+      setError('Please enter your email');
+      return;
+    }
+
     setError('');
     setSuccess(`Welcome ${userName}!`);
     
-    // Store user data directly and go to homepage
+    // Store user data
     const userData = {
       name: userName,
+      email: userEmail,
       secretCode: secretCode,
       createdAt: new Date().toISOString()
     };
@@ -195,14 +191,34 @@ const AppLoader = ({ onLoadingComplete }) => {
     }, 1500);
   };
 
-  // Handle entering new code (when user has stored data)
-  const handleEnterNewCode = () => {
-    setStoredUser(null); // Hide stored user option
-    setSecretCode('');
-    setUserName('');
-    setError('');
-    setSuccess('');
+  // Handle sign in with secret code
+  const handleSigninSubmit = () => {
+    if (!secretCode.trim()) {
+      setError('Please enter your secret code');
+      return;
+    }
+
+    // Check if user exists with this secret code
+    const userData = localStorage.getItem('nox-buddy-user');
+    if (userData) {
+      const parsedUser = JSON.parse(userData);
+      if (parsedUser.secretCode === secretCode) {
+        setError('');
+        setSuccess(`Welcome back, ${parsedUser.name}!`);
+        
+        setTimeout(() => {
+          setIsVisible(false);
+          setTimeout(() => {
+            onLoadingComplete();
+          }, 500);
+        }, 1500);
+        return;
+      }
+    }
+    
+    setError('Invalid secret code. Please try again or sign up.');
   };
+
 
   return (
     <AnimatePresence>
@@ -333,122 +349,196 @@ const AppLoader = ({ onLoadingComplete }) => {
               </motion.div>
             </div>
           ) : (
-            // Secret Code Screen
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="relative z-10 flex flex-col items-center space-y-6 w-full max-w-sm mx-auto px-6"
-            >
-              {/* App Name */}
-              <div className="text-center">
-                <h1 
-                  className="text-2xl font-bold tracking-tight mb-2"
-                  style={{ 
-                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                    color: '#1B365D'
-                  }}
+            // Auth Screen - Refined Compact Design
+            <div className="w-full h-full flex items-center justify-center bg-white">
+              <div className="w-full max-w-5xl mx-auto px-16 flex items-center justify-center gap-20">
+                {/* Left Side - Logo */}
+                <motion.div
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="flex items-center justify-center"
                 >
-                  Nox-Buddy
-                </h1>
-                <p className="text-sm text-gray-600">Setup your access</p>
+                  <img 
+                    src="/images/Stremly_black.png"
+                    alt="Nox-Buddy Logo" 
+                    className="w-64 h-64 object-contain"
+                  />
+                </motion.div>
+
+                {/* Right Side - Auth Form */}
+                <motion.div
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
+                  className="w-80"
+                >
+                  {/* Header */}
+                  <div className="mb-6">
+                    <h1 className="text-2xl font-bold text-black mb-1 tracking-tight">
+                      Welcome
+                    </h1>
+                    <p className="text-sm text-gray-500">
+                      {authMode === 'signup' ? 'Create your account to get started' : 'Sign in to continue'}
+                    </p>
+                  </div>
+
+                  {/* Error/Success Messages */}
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-4 bg-red-50 text-red-600 px-3 py-2 rounded-2xl text-xs"
+                    >
+                      {error}
+                    </motion.div>
+                  )}
+                  
+                  {success && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-4 bg-green-50 text-green-600 px-3 py-2 rounded-2xl text-xs"
+                    >
+                      {success}
+                    </motion.div>
+                  )}
+
+                  {/* Auth Mode Toggle */}
+                  <div className="flex bg-gray-100 rounded-2xl p-0.5 mb-5">
+                    <button
+                      onClick={() => {
+                        setAuthMode('signup');
+                        setError('');
+                        setSuccess('');
+                      }}
+                      className={`flex-1 py-2 px-3 rounded-2xl text-xs font-semibold transition-all duration-300 ${
+                        authMode === 'signup'
+                          ? 'bg-black text-white'
+                          : 'text-gray-600 hover:text-black'
+                      }`}
+                    >
+                      Sign Up
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAuthMode('signin');
+                        setError('');
+                        setSuccess('');
+                      }}
+                      className={`flex-1 py-2 px-3 rounded-2xl text-xs font-semibold transition-all duration-300 ${
+                        authMode === 'signin'
+                          ? 'bg-black text-white'
+                          : 'text-gray-600 hover:text-black'
+                      }`}
+                    >
+                      Sign In
+                    </button>
+                  </div>
+
+                  {/* Form Fields */}
+                  <div className="min-h-[280px]">
+                    <motion.div
+                      key={authMode}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="space-y-3"
+                    >
+                      {authMode === 'signup' ? (
+                        // Signup Form
+                        <>
+                          {/* Secret Code Input */}
+                          <div className="space-y-1.5">
+                            <label className="block text-xs font-semibold text-black">
+                              Secret Code
+                            </label>
+                            <div className="flex space-x-2">
+                              <input
+                                type="text"
+                                placeholder="Enter or generate code"
+                                value={secretCode}
+                                onChange={(e) => setSecretCode(e.target.value.toUpperCase())}
+                                className="flex-1 px-3 py-2.5 rounded-2xl border border-gray-200 focus:outline-none focus:border-black text-xs font-mono transition-all duration-300"
+                                maxLength={8}
+                              />
+                              <button
+                                onClick={handleGenerateNewCode}
+                                className="px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all duration-300 bg-gray-100 text-black hover:bg-gray-200"
+                              >
+                                Generate
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Name Input */}
+                          <div className="space-y-1.5">
+                            <label className="block text-xs font-semibold text-black">
+                              Name
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Enter your full name"
+                              value={userName}
+                              onChange={(e) => setUserName(e.target.value)}
+                              className="w-full px-3 py-2.5 rounded-2xl border border-gray-200 focus:outline-none focus:border-black text-xs transition-all duration-300"
+                            />
+                          </div>
+
+                          {/* Email Input */}
+                          <div className="space-y-1.5">
+                            <label className="block text-xs font-semibold text-black">
+                              Email
+                            </label>
+                            <input
+                              type="email"
+                              placeholder="Enter your email address"
+                              value={userEmail}
+                              onChange={(e) => setUserEmail(e.target.value)}
+                              className="w-full px-3 py-2.5 rounded-2xl border border-gray-200 focus:outline-none focus:border-black text-xs transition-all duration-300"
+                            />
+                          </div>
+
+                          <button
+                            onClick={handleSignupSubmit}
+                            disabled={!secretCode.trim() || !userName.trim() || !userEmail.trim()}
+                            className="w-full py-3 px-4 rounded-2xl bg-black text-white text-sm font-semibold transition-all duration-300 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+                          >
+                            Create Account
+                          </button>
+                        </>
+                      ) : (
+                        // Sign In Form
+                        <>
+                          <div className="space-y-1.5">
+                            <label className="block text-xs font-semibold text-black">
+                              Secret Code
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Enter your secret code"
+                              value={secretCode}
+                              onChange={(e) => setSecretCode(e.target.value.toUpperCase())}
+                              className="w-full px-3 py-2.5 rounded-2xl border border-gray-200 focus:outline-none focus:border-black text-xs font-mono transition-all duration-300"
+                              maxLength={8}
+                            />
+                          </div>
+
+                          <button
+                            onClick={handleSigninSubmit}
+                            disabled={!secretCode.trim()}
+                            className="w-full py-3 px-4 rounded-2xl bg-black text-white text-sm font-semibold transition-all duration-300 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+                          >
+                            Sign In
+                          </button>
+                        </>
+                      )}
+                    </motion.div>
+                  </div>
+                </motion.div>
               </div>
-
-              {/* Error/Success Messages */}
-              {error && (
-                <div className="w-full bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-sm font-medium">
-                  {error}
-                </div>
-              )}
-              
-              {success && (
-                <div className="w-full bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl text-sm font-medium">
-                  {success}
-                </div>
-              )}
-
-              {/* Stored User Login Option */}
-              {storedUser ? (
-                <div className="w-full space-y-3">
-                  <button
-                    onClick={handleStoredUserLogin}
-                    className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-3xl text-sm font-semibold transition-all duration-200 hover:opacity-90"
-                    style={{ 
-                      backgroundColor: '#1B365D',
-                      color: 'white'
-                    }}
-                  >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                    </svg>
-                    <span>Login as {storedUser.name}</span>
-                  </button>
-                  
-                  <button
-                    onClick={handleEnterNewCode}
-                    className="w-full text-center py-2 text-xs text-gray-500 hover:text-gray-700 font-medium transition-colors"
-                  >
-                    Or enter a different secret code
-                  </button>
-                </div>
-              ) : (
-                // Secret Code Input
-                <div className="w-full space-y-3">
-                  {/* Name Input */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-gray-700">
-                      Your Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Enter your name"
-                      value={userName}
-                      onChange={(e) => setUserName(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-3xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400/30 focus:border-gray-400 text-sm"
-                    />
-                  </div>
-
-                  {/* Secret Code Input */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-gray-700">
-                      Secret Code
-                    </label>
-                    <div className="flex space-x-2">
-                      <input
-                        type="text"
-                        placeholder="Enter code"
-                        value={secretCode}
-                        onChange={(e) => setSecretCode(e.target.value.toUpperCase())}
-                        className="flex-1 px-3 py-2.5 rounded-3xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400/30 focus:border-gray-400 text-sm font-mono"
-                        maxLength={8}
-                      />
-                      <button
-                        onClick={handleGenerateNewCode}
-                        className="px-3 py-2.5 rounded-3xl text-xs font-semibold transition-all duration-200 hover:opacity-90"
-                        style={{ 
-                          backgroundColor: '#1B365D',
-                          color: 'white'
-                        }}
-                      >
-                        Generate
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={handleSecretCodeSubmit}
-                    disabled={!secretCode.trim() || !userName.trim()}
-                    className="w-full py-3 px-4 rounded-3xl text-sm font-semibold transition-all duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ 
-                      backgroundColor: '#1B365D',
-                      color: 'white'
-                    }}
-                  >
-                    Continue
-                  </button>
-                </div>
-              )}
-            </motion.div>
+            </div>
           )}
         </motion.div>
       )}

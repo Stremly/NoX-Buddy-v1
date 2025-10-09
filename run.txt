@@ -1,0 +1,20 @@
+Nox-Buddy - How to Run
+
+Quick Start:
+cd frontend
+npm install
+npm run electron-dev
+
+Commands:
+- npm run dev (React only)
+- npm run electron-dev (Full app)
+- npm run build (Production)
+
+Windows Setup:
+1. Install Node.js from https://nodejs.org (includes npm)
+2. Restart PowerShell/Command Prompt
+3. Place NoX_Backend 1.exe in /backend/ for full AI
+4. Closes to system tray (stays running in background)
+5. Right-click tray icon for options
+
+macOS/Linux: Demo mode automatically enabled

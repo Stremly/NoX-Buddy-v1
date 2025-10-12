@@ -18,7 +18,7 @@ async def check_contact(nox_id: str, peer_id: str, secret_code: str):
     user = await db.users.find_one({"nox_id": nox_id, "secret_code": secret_code})
     if not user:
         raise HTTPException(403, "Invalid secret code or NoX ID")
-    if peer_id not in user.get("Contacts", []):
+    if peer_id not in user.get("contacts", []):
         raise HTTPException(403, "Peer not in contacts")
     return True
 

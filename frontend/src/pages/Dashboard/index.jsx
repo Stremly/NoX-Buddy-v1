@@ -255,7 +255,7 @@ const handleAddContact = async () => {
   }
   
   const user = JSON.parse(userData);
-  const contactNoxId = newContactCode.trim().toUpperCase();
+  const contactNoxId = newContactCode.trim();
   
   console.log('Adding contact:', contactNoxId);
   
@@ -288,61 +288,53 @@ const handleAddContact = async () => {
 
 //Conversation 
 
+
 useEffect(() => {
-  if (activeContact && chatMode === 'normal') {
-    fetchContactConversation(activeContact);
+  if (activeContact && chatMode === "normal") {
+    handleSelectContact(activeContact);
   }
-}, [activeContact, chatMode]);
+}, [activeContact]);
 
-const sendMessageToContact = async (messageText) => {
-  if (!activeContact) return;
 
-  try {
-    const response = await axios.post(
-      `${API_BASE}/conversations/${currentUser.noxId.toLowerCase()}/${activeContact.noxId}/message`,
-      null,
-      {
-        params: { 
-          secret_code: currentUser.secretCode,
-          message: messageText,
-         }, // <-- secret code in query
-      }
-    );
-
-    return response.data.data; // this is the saved message object
-  } catch (error) {
-    console.error("Error sending message to contact:", error);
-    return null;
-  }
+const addMessageToDB = async (secretCode, fromUser, toUser, message) => {
+  const res = await axios.post(
+    `${API_BASE}/conversations/${fromUser}/${toUser}/message?secret_code=${secretCode}`,
+    null,
+    { params: { message } } 
+  );
+  return res.data;
 };
 
+const getConversationFromDB = async (userNoxId, contactNoxId, secretCode) => {
+  const res = await axios.get(
+    `${API_BASE}/conversations/${currentUser.noxId}/${contactNoxId}?secret_code=${secretCode}`
+  );
+  return res.data.messages;
+};
 
-
-const fetchContactConversation = async (contact) => {
-  if (!contact) return;
+const handleSelectContact = async (contact) => {
+  setSelectedContact(contact);
+  setActiveContact(contact);
+  setChatMode("normal");
 
   try {
-    const response = await axios.post(
-      `${API_BASE}/conversations/${currentUser.noxId}/${contact.noxId}`,
-      null,
-      { params: { secret_code: currentUser.secretCode } }
-    );
+    const previousMessages = await getConversationFromDB(userNoxId, contact.noxId, userSecretCode);
 
-    const backendMessages = response.data.messages.map(msg => ({
+    const formatted = previousMessages.map(msg => ({
       id: msg.message_id,
       text: msg.message,
-      isBot: msg.direction === 'received',
+      isBot: msg.direction === "received", // ✅ backend uses "sent"/"received"
       timestamp: new Date(msg.datetime),
-      isTyping: false
+      isTyping: false,
     }));
 
-    setMessages(backendMessages);
-
-  } catch (error) {
-    console.error("Error fetching contact conversation:", error);
-    setMessages([]);
+    setMessages(formatted);
+  } catch (err) {
+    console.error("Error loading chat:", err);
   }
 };
+
+
 
 
   // Reminders data - backend should provide GET /api/reminders
@@ -643,6 +635,16 @@ const handleSendMessage = async () => {
 
   if (chatMode === "normal" && activeContact) {
     // Send to contact and save in DB
+        try {
+      // 1️⃣ Ensure conversation exists before sending
+      await axios.post(`${API_BASE}/conversations/${currentUser.noxId}/start/${activeContact.noxId}?secret_code=${currentUser.secretCode}`);
+      console.log('Started Conversation')
+    } catch (err) {
+      // Ignore if already exists
+      if (!err.response || err.response.status !== 403) console.error(err);
+    }
+
+    await addMessageToDB(currentUser.secretCode, currentUser.noxId, activeContact.noxId, messageText);
     const response = await noxServiceManager.sendMessage(messageText);
 
     const botResponse = {
@@ -657,6 +659,9 @@ const handleSendMessage = async () => {
       const filtered = prev.filter(msg => !msg.isTyping);
       return [...filtered, botResponse];
     });
+
+    await addMessageToDB(currentUser.secretCode, activeContact.noxId, currentUser.noxId, botResponse.text);
+
   } else {
     // existing AI logic stays as is
     const response = await noxServiceManager.sendMessage(messageText);
@@ -1348,7 +1353,7 @@ const handleSendMessage = async () => {
               key={contact.id}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => setSelectedContact(contact)}
+              onClick={() => handleSelectContact(contact)}
               className={`p-4 border-2 rounded-2xl cursor-pointer transition-all duration-200 ${
                 selectedContact?.id === contact.id 
                   ? 'border-black bg-black text-white shadow-lg' 

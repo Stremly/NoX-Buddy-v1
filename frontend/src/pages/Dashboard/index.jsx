@@ -26,7 +26,13 @@ const Dashboard = () => {
   // Chat mode - backend should handle different message routing based on mode
   const [chatMode, setChatMode] = useState('nox'); // 'nox' or 'normal'
   const [activeContact, setActiveContact] = useState(null); // Currently chatting contact
-    const API_BASE = 'http://localhost:8000';
+  const API_BASE = 'http://localhost:8000';
+
+  // Profile photo editor state
+  const [showPhotoEditor, setShowPhotoEditor] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imageScale, setImageScale] = useState(1);
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
 
   // Reset expanded state when minimizing
   const resetMinimizedState = () => {
@@ -63,39 +69,93 @@ const Dashboard = () => {
 
   // Auto-start recordings when minimized
   useEffect(() => {
-    if (isMinimized) {
-      // Auto-start voice recording when minimized
-      setIsVoiceRecording(true);
-      // Auto-start screen recording when minimized
-      setIsScreenRecording(true);
-      console.log('Auto-started recordings for minimized mode');
-    } else {
-      // Stop recordings when not minimized
-      setIsVoiceRecording(false);
-      setIsScreenRecording(false);
-      console.log('Stopped recordings - not in minimized mode');
-    }
+    // Add a small delay to ensure window resize completes first
+    const recordingTimer = setTimeout(() => {
+      if (isMinimized) {
+        // Auto-start voice recording when minimized
+        setIsVoiceRecording(true);
+        // Auto-start screen recording when minimized
+        setIsScreenRecording(true);
+        console.log('Auto-started recordings for minimized mode');
+      } else {
+        // Stop recordings when not minimized
+        setIsVoiceRecording(false);
+        setIsScreenRecording(false);
+        console.log('Stopped recordings - not in minimized mode');
+      }
+    }, 100)
+    return () => clearTimeout(recordingTimer);
   }, [isMinimized]);
 
   // Effect to auto-resize when minimized messages change
   useEffect(() => {
     if (isMinimized && isExpanded && minimizedMessages.length > 0) {
-      autoResizeWindow(minimizedMessages.length);
+      // Debounce resize to prevent excessive calls
+      const resizeTimer = setTimeout(() => {
+        autoResizeWindow(minimizedMessages.length);
+      }, 50);
       
       // Auto-scroll to bottom when new message is added
-      setTimeout(() => {
+      const scrollTimer = setTimeout(() => {
         const messagesContainer = document.querySelector('.messages-container');
         if (messagesContainer) {
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
       }, 150);
+
+      return () => {
+        clearTimeout(resizeTimer);
+        clearTimeout(scrollTimer);
+      };
     }
   }, [minimizedMessages.length, isMinimized, isExpanded]);
 
+  //Refresh Integartions
+  useEffect(() => {
+  const fetchData = async () => {
+    const storedUserStr = localStorage.getItem('nox-buddy-user');
+    const storedUser = JSON.parse(storedUserStr);
+    try {
+      const data = await getIntegrations(storedUser.secretCode); // fetch from backend
+      console.log("Backend integrations:", data); // DEBUG: log raw response
+
+      const connectedFromBackend = data.integrations || {};
+      console.log("Processed backend integrations:", connectedFromBackend); // DEBUG
+
+      // Merge backend connected apps with default integrations
+      const merged = integrations.map((intg) => {
+        const config = connectedFromBackend[intg.name];
+        console.log(`Merging ${intg.name}:`, config); // DEBUG: see each merge
+        return {
+          ...intg,
+          connected: !!config,
+          config: config || {}
+        };
+      });
+
+      console.log("Final merged integrations:", merged); // DEBUG: final state before set
+      setIntegrations(merged);
+    } catch (err) {
+      console.error("Failed to fetch integrations:", err);
+    }
+  };
+
+  fetchData();
+}, []); // runs once on startup
+
+
+
+
   // Handle minimize with Electron window resize
-  const handleMinimize = async () => {
+    const handleMinimize = async () => {
     console.log('Minimize button clicked');
     try {
+      // Transfer main messages to minimized messages before minimizing
+      if (messages.length > 0) {
+        setMinimizedMessages(prev => [...prev, ...messages]);
+        setMessages([]); // Clear main messages after transfer
+      }
+      
       // Check if we're in Electron environment
       if (typeof window !== 'undefined' && window.electronAPI) {
         console.log('Electron API available, calling resizeWindowForMinimize');
@@ -104,20 +164,24 @@ const Dashboard = () => {
         
         if (result.success) {
           console.log('Window resized successfully');
+          // Only change state if window resize succeeded
+          resetMinimizedState();
+          setIsMinimized(true);
         } else {
           console.error('Failed to resize window:', result.error);
+          alert('Failed to minimize window. Please try again.');
+          return; // Don't change state if resize failed
         }
       } else {
+        // Browser mode - no actual window resize, just change state
         console.log('Electron API not available, running in browser mode');
+        resetMinimizedState();
+        setIsMinimized(true);
       }
-      
-      // Reset and set the minimized state
-      resetMinimizedState();
-      setIsMinimized(true);
     } catch (error) {
       console.error('Error minimizing window:', error);
-      // Fallback to just setting state
-      setIsMinimized(true);
+      alert('Error minimizing window: ' + error.message);
+      // Don't change state on error
     }
   };
 
@@ -366,79 +430,104 @@ const handleSelectContact = async (contact) => {
  
   // Integration API functions
   // Replace the mock data with empty arrays
-const [connectedApps, setConnectedApps] = useState([]);
-
-
-const [integrations, setIntegrations] = useState([
+  // Legacy connected apps - can be removed when integrations are ready
+  const [connectedApps, setConnectedApps] = useState([
+    { id: 1, name: 'Slack', status: 'Connected', config: { webhook: 'https://hooks.slack.com/...' } },
+    { id: 2, name: 'Discord', status: 'Connected', config: { token: 'BOT_TOKEN_123' } }
+  ]);
+  // Integrations data - backend should provide GET /api/integrations
+  const defaultIntegrations = [
   { id: 1, name: 'Notion', description: 'Notes & docs', connected: false, config: {} },
   { id: 2, name: 'Slack', description: 'Team chat', connected: false, config: {} },
   { id: 3, name: 'Jira', description: 'Project tracking', connected: false, config: {} },
   { id: 4, name: 'GitHub', description: 'Code repository', connected: false, config: {} }
-]);
+];
 
-const fetchIntegrations = async (secretCode) => {
-  try {
-    const response = await axios.get(`${API_BASE}/integrations/${secretCode}`);
-    const integrationsData = response.data.integrations;
-    
-    // Transform backend data to frontend format
-    const formattedIntegrations = Object.entries(integrationsData).map(([name, data], index) => ({
-      id: index + 1,
-      name: name.charAt(0).toUpperCase() + name.slice(1), // Capitalize name
-      description: getIntegrationDescription(name),
-      connected: true,
-      config: data
-    }));
-    
-    setIntegrations(formattedIntegrations);
-    
-    // Also update connected apps
-    const connectedApps = formattedIntegrations.filter(app => app.connected);
-    setConnectedApps(connectedApps);
-    
-  } catch (error) {
-    console.error('Error fetching integrations:', error);
-    // Keep default integrations if fetch fails
-  }
-};
+  const [integrations, setIntegrations] = useState(defaultIntegrations);
+  const [connectingIntegration, setConnectingIntegration] = useState(null);
+  const [integrationFormData, setIntegrationFormData] = useState({});
 
-const connectIntegration = async (integrationName, config = {}) => {
-  try {
-    const userData = localStorage.getItem('nox-buddy-user');
-    if (!userData) return { success: false, message: 'User not logged in' };
-    
-    const user = JSON.parse(userData);
-    const response = await axios.put(`${API_BASE}/integrations/${user.secretCode}/${integrationName.toLowerCase()}`, {
-      data: config
+  const getIntegrations = async (secretCode) => {
+  const res = await fetch(`${API_BASE}/integrations/${secretCode}`);
+  return res.json();
+  };
+
+  const connectIntegrationAPI = async (secretCode, integrationName, config) => {
+  const res = await fetch(`${API_BASE}/integrations/${secretCode}/${integrationName}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: config }),
+  });
+  return res.json();
+  };
+
+  const deleteIntegrationAPI = async (secretCode, integrationName) => {
+  const res = await fetch(`${API_BASE}/integrations/${secretCode}/${integrationName}`, {
+    method: "DELETE",
+  });
+  return res.json();
+  };
+
+  const startConnectIntegration = (integration) => {
+    setConnectingIntegration(integration);
+    setIntegrationFormData({});
+  };
+
+  const cancelConnectIntegration = () => {
+    setConnectingIntegration(null);
+    setIntegrationFormData({});
+  };
+
+    const handleIntegrationFormChange = (field, value) => {
+    setIntegrationFormData({
+      ...integrationFormData,
+      [field]: value
     });
-    
-    // Refresh integrations list
-    await fetchIntegrations(user.secretCode);
-    
-    return { success: true, message: `${integrationName} connected successfully!` };
-  } catch (error) {
-    console.error('Error connecting integration:', error);
-    return { success: false, message: 'Failed to connect integration' };
+  };
+
+const connectIntegration = async () => {
+  if (!connectingIntegration) return;
+
+  const requiredFields = getRequiredFields(connectingIntegration.name);
+  const missingFields = requiredFields.filter(field => !integrationFormData[field]?.trim());
+  if (missingFields.length > 0) {
+    alert(`Please fill in all required fields: ${missingFields.join(', ')}`);
+    return;
+  }
+
+  try {
+    const config = { ...integrationFormData, connectedAt: new Date().toISOString() };
+    const res = await connectIntegrationAPI(currentUser.secretCode, connectingIntegration.name, config);
+
+    alert(res.message);
+
+    await refreshIntegrations(currentUser.secretCode);
+
+    setConnectingIntegration(null);
+    setIntegrationFormData({});
+  } catch (err) {
+    console.error("Error:", err);
+    alert("Failed to connect integration");
   }
 };
 
-const disconnectIntegration = async (integrationName) => {
-  try {
-    const userData = localStorage.getItem('nox-buddy-user');
-    if (!userData) return { success: false, message: 'User not logged in' };
-    
-    const user = JSON.parse(userData);
-    await axios.delete(`${API_BASE}/integrations/${user.secretCode}/${integrationName.toLowerCase()}`);
-    
-    // Refresh integrations list
-    await fetchIntegrations(user.secretCode);
-    
-    return { success: true, message: `${integrationName} disconnected successfully!` };
-  } catch (error) {
-    console.error('Error disconnecting integration:', error);
-    return { success: false, message: 'Failed to disconnect integration' };
+  const disconnectIntegration = async (integrationId) => {
+  const integration = integrations.find(i => i.id === integrationId);
+  if (!integration) return;
+
+  if (window.confirm(`Are you sure you want to disconnect ${integration.name}?`)) {
+    try {
+      await deleteIntegrationAPI(currentUser.secretCode, integration.name);
+      await refreshIntegrations(currentUser.secretCode);
+    } catch (error) {
+      console.error("Error disconnecting integration:", error);
+      alert("Failed to disconnect integration");
+    }
   }
 };
+
+
+
 
 
 // Handle integration connection
@@ -464,48 +553,56 @@ const handleConnectIntegration = async (integration) => {
   }
 };
 
-// Handle integration disconnection
-const handleDisconnectIntegration = async (integration) => {
-  if (window.confirm(`Disconnect ${integration.name}?`)) {
-    try {
-      const result = await disconnectIntegration(integration.name);
-      
-      if (result.success) {
-        // The integration list will automatically refresh via fetchIntegrations
-        console.log(result.message);
-      } else {
-        alert(result.message);
-      }
-    } catch (error) {
-      console.error('Error disconnecting integration:', error);
-      alert('Failed to disconnect integration');
-    }
+// Fetch and merge integrations
+const refreshIntegrations = async (secretCode) => {
+  try {
+    const backendRes = await getIntegrations(secretCode);
+    const connectedFromBackend = backendRes.integrations || {};
+
+    // Merge backend data with all available integrations
+    const merged = integrations.map((intg) => {
+      const config = connectedFromBackend[intg.name];
+      return {
+        ...intg,
+        connected: !!config,
+        config: config || {}
+      };
+    });
+
+    setIntegrations(merged);
+  } catch (error) {
+    console.error("Failed to refresh integrations:", error);
   }
 };
 
-// Handle integration configuration
-const handleConfigureIntegration = (integration) => {
-  // You can implement a modal or form for configuration
-  alert(`Configure ${integration.name} integration\n\nAdd configuration form here with fields specific to ${integration.name}`);
-  
-  // Example for Slack configuration:
-  if (integration.name.toLowerCase() === 'slack') {
-    const webhookUrl = prompt('Enter Slack webhook URL:');
-    if (webhookUrl) {
-      const config = { webhook: webhookUrl };
-      connectIntegration(integration.name, config);
-    }
-  }
-  
-  // Example for GitHub configuration:
-  if (integration.name.toLowerCase() === 'github') {
-    const token = prompt('Enter GitHub access token:');
-    if (token) {
-      const config = { token: token };
-      connectIntegration(integration.name, config);
-    }
-  }
-};
+
+  // Get required fields for each integration type
+  const getRequiredFields = (integrationName) => {
+    const fieldMap = {
+      'Notion': ['apiKey', 'databaseId'],
+      'Slack': ['webhookUrl', 'botToken'],
+      'Jira': ['domain', 'email', 'apiToken'],
+      'GitHub': ['accessToken', 'repository']
+    };
+    return fieldMap[integrationName] || [];
+  };
+
+  // Get field labels for display
+  const getFieldLabel = (field) => {
+    const labelMap = {
+      'apiKey': 'API Key',
+      'databaseId': 'Database ID',
+      'webhookUrl': 'Webhook URL',
+      'botToken': 'Bot Token',
+      'domain': 'Domain',
+      'email': 'Email',
+      'apiToken': 'API Token',
+      'accessToken': 'Access Token',
+      'repository': 'Repository'
+    };
+    return labelMap[field] || field;
+  };
+
 
   // Memory items data - backend should provide GET /api/memory
   const [memoryItems, setMemoryItems] = useState([
@@ -524,7 +621,6 @@ const handleConfigureIntegration = (integration) => {
     console.log('Current user set:', user);
     console.log('🔄 Loading contacts on mount for user:', user.secretCode);
     fetchContacts(user.secretCode);
-    fetchIntegrations(user.secretCode);
     setEditableUserData(user);
       }
     } catch (error) {
@@ -1580,86 +1676,126 @@ const handleSendMessage = async () => {
           )}
 
           {/* Integrations Tab */}
-{activeTab === 'integrations' && (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.3 }}
-    className="h-full flex flex-col max-w-4xl mx-auto"
-  >
-    {/* Header */}
-    <div className="flex items-center justify-between mb-6">
-      <div className="flex items-center space-x-3">
-        <h3 className="text-lg font-semibold text-black">Integrations</h3>
-        <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">
-          {integrations.filter(app => app.connected).length} connected
-        </span>
-      </div>
-    </div>
-
-    {/* Integrations Grid - Simple 4 cards */}
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {integrations.map((integration) => (
-        <motion.div
-          key={integration.id}
-          whileHover={{ scale: 1.02 }}
-          className="bg-white border-2 border-gray-200 rounded-2xl p-5 hover:border-gray-300 hover:shadow-md transition-all duration-200 text-center"
-        >
-          {/* App Icon */}
-          <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-lg font-medium text-gray-700">
-              {integration.name.charAt(0).toUpperCase()}
-            </span>
-          </div>
-
-          {/* App Info */}
-          <h5 className="font-medium text-black text-base mb-1">{integration.name}</h5>
-          <p className="text-xs text-gray-500 mb-4">{integration.description}</p>
-
-          {/* Connection Status */}
-          {integration.connected ? (
-            <div className="mb-4">
-              <div className="flex items-center justify-center space-x-2 mb-3">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-xs text-green-600 font-medium">Connected</span>
-              </div>
-              <div className="flex space-x-2">
-                <button 
-                  onClick={() => {
-                    // Configure integration
-                    handleConfigureIntegration(integration);
-                  }}
-                  className="flex-1 px-3 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-xs font-medium transition-colors"
-                >
-                  Settings
-                </button>
-                <button 
-                  onClick={() => {
-                    // Disconnect integration
-                    handleDisconnectIntegration(integration);
-                  }}
-                  className="px-3 py-2 text-gray-600 hover:text-red-600 rounded-3xl text-xs font-medium transition-colors"
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button 
-              onClick={() => {
-                // Connect integration
-                handleConnectIntegration(integration);
-              }}
-              className="w-full px-4 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors"
+          {activeTab === 'integrations' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="h-full flex flex-col max-w-4xl mx-auto"
             >
-              Connect
-            </button>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <h3 className="text-lg font-semibold text-black">Integrations</h3>
+                  <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">
+                    {integrations.filter(app => app.connected).length} connected
+                  </span>
+                </div>
+              </div>
+
+              {/* Connection Modal */}
+              {connectingIntegration && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 bg-gray-50 border border-gray-200 rounded-2xl p-6"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-medium text-black">Connect to {connectingIntegration.name}</h4>
+                    <button
+                      onClick={cancelConnectIntegration}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <p className="text-sm text-gray-600 mb-4">
+                    Enter your {connectingIntegration.name} credentials to establish the connection.
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {getRequiredFields(connectingIntegration.name).map((field) => (
+                      <div key={field}>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          {getFieldLabel(field)}
+                        </label>
+                        <input
+                          type={field.toLowerCase().includes('token') || field.toLowerCase().includes('key') ? 'password' : 'text'}
+                          value={integrationFormData[field] || ''}
+                          onChange={(e) => handleIntegrationFormChange(field, e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm"
+                          placeholder={`Enter ${getFieldLabel(field).toLowerCase()}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end space-x-3 mt-6">
+                    <button
+                      onClick={cancelConnectIntegration}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={connectIntegration}
+                      className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
+                    >
+                      Connect
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Integrations Grid - Simple 4 cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {integrations.map((integration) => (
+                  <motion.div
+                    key={integration.id}
+                    whileHover={{ scale: 1.02 }}
+                    className="bg-white border-2 border-gray-200 rounded-2xl p-5 hover:border-gray-300 hover:shadow-md transition-all duration-200 text-center"
+                  >
+                    {/* App Icon */}
+                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                      <span className="text-lg font-medium text-gray-700">
+                        {integration.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* App Info */}
+                    <h5 className="font-medium text-black text-base mb-1">{integration.name}</h5>
+                    <p className="text-xs text-gray-500 mb-4">{integration.description}</p>
+
+                    {/* Connection Status */}
+                    {integration.connected ? (
+                      <div>
+                        <div className="flex items-center justify-center space-x-2 mb-3">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <span className="text-xs text-green-600 font-medium">Connected</span>
+                        </div>
+                        <button 
+                          onClick={() => disconnectIntegration(integration.id)}
+                          className="w-full px-3 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-3xl text-xs font-medium transition-colors"
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => startConnectIntegration(integration)}
+                        className="w-full px-4 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors"
+                      >
+                        Connect
+                      </button>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
           )}
-        </motion.div>
-      ))}
-    </div>
-  </motion.div>
-)}
 
           {/* Memory Tab */}
           {activeTab === 'memory' && (

@@ -43,8 +43,16 @@ async def delete_integration(secret_code: str, integration_name: str):
 @router.get("/{secret_code}")
 async def list_integrations(secret_code: str):
     doc = await db.integrations.find_one({"secret_code": secret_code}, {"_id": 0})
+    print("DEBUG: Fetched doc:", doc)  # check what is actually returned
+
     if not doc:
         return {"integrations": {}}
-    # remove secret_code from output
+
+    # If you stored everything under "integrations", return that
+    if "integrations" in doc:
+        return {"integrations": doc["integrations"]}
+
+    # Otherwise, remove secret_code and return top-level keys
     integrations = {k: v for k, v in doc.items() if k != "secret_code"}
     return {"integrations": integrations}
+

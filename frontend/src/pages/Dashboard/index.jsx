@@ -34,7 +34,14 @@ const Dashboard = () => {
   // Auto-resize window when messages change
   const autoResizeWindow = async (messageCount) => {
     if (isMinimized && isExpanded && window.electronAPI && window.electronAPI.expandWindowForConversation) {
-      await window.electronAPI.expandWindowForConversation(messageCount);
+      try {
+        const result = await window.electronAPI.expandWindowForConversation(messageCount);
+        if (!result.success) {
+          console.error('Failed to auto-resize window:', result.error);
+        }
+      } catch (error) {
+        console.error('Error auto-resizing window:', error);
+      }
     }
   };
 
@@ -60,32 +67,45 @@ const Dashboard = () => {
 
   // Auto-start recordings when minimized
   useEffect(() => {
-    if (isMinimized) {
-      // Auto-start voice recording when minimized
-      setIsVoiceRecording(true);
-      // Auto-start screen recording when minimized
-      setIsScreenRecording(true);
-      console.log('Auto-started recordings for minimized mode');
-    } else {
-      // Stop recordings when not minimized
-      setIsVoiceRecording(false);
-      setIsScreenRecording(false);
-      console.log('Stopped recordings - not in minimized mode');
-    }
+    // Add a small delay to ensure window resize completes first
+    const recordingTimer = setTimeout(() => {
+      if (isMinimized) {
+        // Auto-start voice recording when minimized
+        setIsVoiceRecording(true);
+        // Auto-start screen recording when minimized
+        setIsScreenRecording(true);
+        console.log('Auto-started recordings for minimized mode');
+      } else {
+        // Stop recordings when not minimized
+        setIsVoiceRecording(false);
+        setIsScreenRecording(false);
+        console.log('Stopped recordings - not in minimized mode');
+      }
+    }, 100); // Small delay to prevent race condition with window resize
+
+    return () => clearTimeout(recordingTimer);
   }, [isMinimized]);
 
   // Effect to auto-resize when minimized messages change
   useEffect(() => {
     if (isMinimized && isExpanded && minimizedMessages.length > 0) {
-      autoResizeWindow(minimizedMessages.length);
+      // Debounce resize to prevent excessive calls
+      const resizeTimer = setTimeout(() => {
+        autoResizeWindow(minimizedMessages.length);
+      }, 50);
       
       // Auto-scroll to bottom when new message is added
-      setTimeout(() => {
+      const scrollTimer = setTimeout(() => {
         const messagesContainer = document.querySelector('.messages-container');
         if (messagesContainer) {
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
       }, 150);
+
+      return () => {
+        clearTimeout(resizeTimer);
+        clearTimeout(scrollTimer);
+      };
     }
   }, [minimizedMessages.length, isMinimized, isExpanded]);
 
@@ -101,20 +121,24 @@ const Dashboard = () => {
         
         if (result.success) {
           console.log('Window resized successfully');
+          // Only change state if window resize succeeded
+          resetMinimizedState();
+          setIsMinimized(true);
         } else {
           console.error('Failed to resize window:', result.error);
+          alert('Failed to minimize window. Please try again.');
+          return; // Don't change state if resize failed
         }
       } else {
+        // Browser mode - no actual window resize, just change state
         console.log('Electron API not available, running in browser mode');
+        resetMinimizedState();
+        setIsMinimized(true);
       }
-      
-      // Reset and set the minimized state
-      resetMinimizedState();
-      setIsMinimized(true);
     } catch (error) {
       console.error('Error minimizing window:', error);
-      // Fallback to just setting state
-      setIsMinimized(true);
+      alert('Error minimizing window: ' + error.message);
+      // Don't change state on error
     }
   };
 
@@ -130,55 +154,47 @@ const Dashboard = () => {
         
         if (result.success) {
           console.log('Window restored successfully');
+          // Clean up minimized state before restoring
+          resetMinimizedState();
+          setIsMinimized(false);
+          
+          // Stop recordings when restoring to full dashboard
+          setIsVoiceRecording(false);
+          setIsScreenRecording(false);
         } else {
           console.error('Failed to restore window:', result.error);
+          alert('Failed to restore window. Please try again.');
+          return; // Don't change state if resize failed
         }
       } else {
+        // Browser mode - no actual window resize, just change state
         console.log('Electron API not available, running in browser mode');
+        resetMinimizedState();
+        setIsMinimized(false);
+        setIsVoiceRecording(false);
+        setIsScreenRecording(false);
       }
-      
-      // Set the restored state
-      setIsMinimized(false);
     } catch (error) {
       console.error('Error restoring window:', error);
-      // Fallback to just setting state
-      setIsMinimized(false);
+      alert('Error restoring window: ' + error.message);
+      // Don't change state on error
     }
   };
   // Contacts data - backend should provide GET /api/contacts
-  const [contacts, setContacts] = useState([
-    { id: 1, name: 'John Doe', noxId: 'NOX-ABC123', lastMessage: 'Hello there!', timestamp: '2 hours ago' },
-    { id: 2, name: 'Jane Smith', noxId: 'NOX-XYZ789', lastMessage: 'How are you?', timestamp: '1 day ago' }
-  ]);
+  const [contacts, setContacts] = useState([]);
   const [showNewContactForm, setShowNewContactForm] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactNoxId, setNewContactNoxId] = useState('');
   const [showNewMemoryForm, setShowNewMemoryForm] = useState(false);
-  const [selectedContact, setSelectedContact] = useState(null);
+  const [newMemoryData, setNewMemoryData] = useState('');
   // Reminders data - backend should provide GET /api/reminders
-  const [reminders, setReminders] = useState([
-    {
-      id: 1,
-      description: 'Team meeting at 3 PM',
-      reminderId: 'REM-001',
-      dateCreated: '2024-01-15',
-      dateReminder: '2024-01-20',
-      numberSent: 2,
-      acknowledged: false,
-      status: 'Active'
-    },
-    {
-      id: 2,
-      description: 'Submit project report',
-      reminderId: 'REM-002',
-      dateCreated: '2024-01-10',
-      dateReminder: '2024-01-18',
-      numberSent: 1,
-      acknowledged: true,
-      status: 'Completed'
-    }
-  ]);
+  const [reminders, setReminders] = useState([]);
   const [showNewReminderForm, setShowNewReminderForm] = useState(false);
   const [newReminderDescription, setNewReminderDescription] = useState('');
   const [newReminderDateTime, setNewReminderDateTime] = useState('');
+  const [editingReminder, setEditingReminder] = useState(null);
+  const [editReminderDescription, setEditReminderDescription] = useState('');
+  const [editReminderDateTime, setEditReminderDateTime] = useState('');
   // Legacy connected apps - can be removed when integrations are ready
   const [connectedApps, setConnectedApps] = useState([
     { id: 1, name: 'Slack', status: 'Connected', config: { webhook: 'https://hooks.slack.com/...' } },
@@ -191,19 +207,75 @@ const Dashboard = () => {
     { id: 3, name: 'Jira', description: 'Project tracking', connected: false, config: {} },
     { id: 4, name: 'GitHub', description: 'Code repository', connected: false, config: {} }
   ]);
+  const [connectingIntegration, setConnectingIntegration] = useState(null);
+  const [integrationFormData, setIntegrationFormData] = useState({});
   // Memory items data - backend should provide GET /api/memory
-  const [memoryItems, setMemoryItems] = useState([
-    { id: 1, data: 'User prefers morning meetings' },
-    { id: 2, data: 'Project deadline is March 15th' },
-    { id: 3, data: 'Favorite programming language is JavaScript' }
-  ]);
+  const [memoryItems, setMemoryItems] = useState([]);
+  
+  // Profile data state
+  const [profileData, setProfileData] = useState({
+    personal: {
+      name: '',
+      email: '',
+      bio: '',
+      secretCode: '',
+      photo: null
+    },
+    nox: {
+      noxId: '',
+      noxName: 'Nox Assistant',
+      noxBio: 'Your intelligent desktop companion designed to help with various tasks and conversations.',
+      instructions: 'Be helpful, accurate, and concise in your responses. Maintain a professional yet friendly tone.'
+    },
+    usage: {
+      totalHours: 0,
+      memorySize: 0,
+      remindersCount: 0,
+      avgRuntime: 0
+    }
+  });
 
   // Load user data on component mount
   useEffect(() => {
     try {
       const storedUser = localStorage.getItem('nox-buddy-user');
       if (storedUser) {
-        setUserData(JSON.parse(storedUser));
+        const user = JSON.parse(storedUser);
+        setUserData(user);
+        
+        // Initialize profile data with user data
+        setProfileData(prev => ({
+          ...prev,
+          personal: {
+            ...prev.personal,
+            name: user.name || '',
+            email: user.email || ''
+          }
+        }));
+      }
+      
+      // Load or generate NOX-ID
+      let noxId = localStorage.getItem('nox-buddy-nox-id');
+      if (!noxId) {
+        noxId = `NOX-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+        localStorage.setItem('nox-buddy-nox-id', noxId);
+      }
+      setProfileData(prev => ({
+        ...prev,
+        nox: {
+          ...prev.nox,
+          noxId: noxId
+        }
+      }));
+      
+      // Load profile data from localStorage if exists
+      const storedProfile = localStorage.getItem('nox-buddy-profile');
+      if (storedProfile) {
+        const profile = JSON.parse(storedProfile);
+        setProfileData(prev => ({
+          ...prev,
+          ...profile
+        }));
       }
     } catch (error) {
       console.error('Error loading user data:', error);
@@ -249,6 +321,320 @@ const Dashboard = () => {
     setNewReminderDescription('');
     setNewReminderDateTime('');
     setShowNewReminderForm(false);
+  };
+
+  // Edit reminder function
+  const startEditReminder = (reminder) => {
+    setEditingReminder(reminder);
+    setEditReminderDescription(reminder.description);
+    // Convert date to datetime-local format
+    const reminderDate = new Date(reminder.dateReminder);
+    const localDateTime = reminderDate.toISOString().slice(0, 16);
+    setEditReminderDateTime(localDateTime);
+  };
+
+  // Save edited reminder function
+  const saveEditedReminder = () => {
+    if (!editReminderDescription.trim() || !editReminderDateTime) {
+      alert('Please fill in both description and date/time');
+      return;
+    }
+
+    const updatedReminders = reminders.map(reminder => 
+      reminder.id === editingReminder.id 
+        ? {
+            ...reminder,
+            description: editReminderDescription.trim(),
+            dateReminder: editReminderDateTime.split('T')[0]
+          }
+        : reminder
+    );
+
+    setReminders(updatedReminders);
+    
+    // Reset edit form
+    setEditingReminder(null);
+    setEditReminderDescription('');
+    setEditReminderDateTime('');
+  };
+
+  // Cancel edit function
+  const cancelEditReminder = () => {
+    setEditingReminder(null);
+    setEditReminderDescription('');
+    setEditReminderDateTime('');
+  };
+
+  // Delete reminder function
+  const deleteReminder = (reminderId) => {
+    if (window.confirm('Are you sure you want to delete this reminder?')) {
+      setReminders(reminders.filter(reminder => reminder.id !== reminderId));
+    }
+  };
+
+  // Toggle acknowledgment status
+  const toggleAcknowledgment = (reminderId) => {
+    const updatedReminders = reminders.map(reminder => 
+      reminder.id === reminderId 
+        ? {
+            ...reminder,
+            acknowledged: !reminder.acknowledged,
+            status: !reminder.acknowledged ? 'Completed' : 'Active'
+          }
+        : reminder
+    );
+    setReminders(updatedReminders);
+  };
+
+  // Create new contact function - backend should provide POST /api/contacts
+  const createNewContact = () => {
+    if (!newContactName.trim() || !newContactNoxId.trim()) {
+      alert('Please fill in both name and NOX-ID');
+      return;
+    }
+
+    // Validate NOX-ID format (should start with NOX-)
+    if (!newContactNoxId.toUpperCase().startsWith('NOX-')) {
+      alert('NOX-ID must start with "NOX-" (e.g., NOX-ABC123)');
+      return;
+    }
+
+    // Check for duplicate NOX-ID
+    if (contacts.some(contact => contact.noxId.toLowerCase() === newContactNoxId.toLowerCase())) {
+      alert('A contact with this NOX-ID already exists');
+      return;
+    }
+
+    const newContact = {
+      id: contacts.length + 1,
+      name: newContactName.trim(),
+      noxId: newContactNoxId.toUpperCase().trim(),
+      lastMessage: 'No messages yet',
+      timestamp: 'Just added'
+    };
+
+    // Add to contacts list
+    setContacts([...contacts, newContact]);
+    
+    // Reset form
+    setNewContactName('');
+    setNewContactNoxId('');
+    setShowNewContactForm(false);
+  };
+
+  // Create new memory item function - backend should provide POST /api/memory
+  const createNewMemory = () => {
+    if (!newMemoryData.trim()) {
+      alert('Please enter memory data');
+      return;
+    }
+
+    const newMemoryItem = {
+      id: memoryItems.length + 1,
+      data: newMemoryData.trim()
+    };
+
+    // Add to memory items list
+    setMemoryItems([...memoryItems, newMemoryItem]);
+    
+    // Reset form
+    setNewMemoryData('');
+    setShowNewMemoryForm(false);
+  };
+
+  // Delete memory item function
+  const deleteMemoryItem = (memoryId) => {
+    if (window.confirm('Are you sure you want to delete this memory item?')) {
+      setMemoryItems(memoryItems.filter(item => item.id !== memoryId));
+    }
+  };
+
+  // Integration connection functions
+  const startConnectIntegration = (integration) => {
+    setConnectingIntegration(integration);
+    setIntegrationFormData({});
+  };
+
+  const cancelConnectIntegration = () => {
+    setConnectingIntegration(null);
+    setIntegrationFormData({});
+  };
+
+  const handleIntegrationFormChange = (field, value) => {
+    setIntegrationFormData({
+      ...integrationFormData,
+      [field]: value
+    });
+  };
+
+  const connectIntegration = () => {
+    if (!connectingIntegration) return;
+
+    // Validate required fields based on integration type
+    const requiredFields = getRequiredFields(connectingIntegration.name);
+    const missingFields = requiredFields.filter(field => !integrationFormData[field]?.trim());
+    
+    if (missingFields.length > 0) {
+      alert(`Please fill in all required fields: ${missingFields.join(', ')}`);
+      return;
+    }
+
+    // Update integration status
+    const updatedIntegrations = integrations.map(integration => 
+      integration.id === connectingIntegration.id 
+        ? {
+            ...integration,
+            connected: true,
+            config: { ...integrationFormData }
+          }
+        : integration
+    );
+
+    setIntegrations(updatedIntegrations);
+    
+    // Reset form
+    setConnectingIntegration(null);
+    setIntegrationFormData({});
+    
+    alert(`Successfully connected to ${connectingIntegration.name}!`);
+  };
+
+  const disconnectIntegration = (integrationId) => {
+    const integration = integrations.find(i => i.id === integrationId);
+    if (window.confirm(`Are you sure you want to disconnect ${integration.name}?`)) {
+      const updatedIntegrations = integrations.map(integration => 
+        integration.id === integrationId 
+          ? { ...integration, connected: false, config: {} }
+          : integration
+      );
+      setIntegrations(updatedIntegrations);
+    }
+  };
+
+  // Get required fields for each integration type
+  const getRequiredFields = (integrationName) => {
+    const fieldMap = {
+      'Notion': ['apiKey', 'databaseId'],
+      'Slack': ['webhookUrl', 'botToken'],
+      'Jira': ['domain', 'email', 'apiToken'],
+      'GitHub': ['accessToken', 'repository']
+    };
+    return fieldMap[integrationName] || [];
+  };
+
+  // Get field labels for display
+  const getFieldLabel = (field) => {
+    const labelMap = {
+      'apiKey': 'API Key',
+      'databaseId': 'Database ID',
+      'webhookUrl': 'Webhook URL',
+      'botToken': 'Bot Token',
+      'domain': 'Domain',
+      'email': 'Email',
+      'apiToken': 'API Token',
+      'accessToken': 'Access Token',
+      'repository': 'Repository'
+    };
+    return labelMap[field] || field;
+  };
+
+  // Profile data update functions
+  const updatePersonalInfo = (field, value) => {
+    setProfileData(prev => ({
+      ...prev,
+      personal: {
+        ...prev.personal,
+        [field]: value
+      }
+    }));
+  };
+
+  const updateNoxInfo = (field, value) => {
+    setProfileData(prev => ({
+      ...prev,
+      nox: {
+        ...prev.nox,
+        [field]: value
+      }
+    }));
+  };
+
+  const savePersonalInfo = () => {
+    try {
+      // Validate required fields
+      if (!profileData.personal.name.trim()) {
+        alert('Please enter your name');
+        return;
+      }
+      
+      if (!profileData.personal.email.trim()) {
+        alert('Please enter your email');
+        return;
+      }
+      
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(profileData.personal.email)) {
+        alert('Please enter a valid email address');
+        return;
+      }
+      
+      // Save to localStorage
+      localStorage.setItem('nox-buddy-profile', JSON.stringify(profileData));
+      
+      // Update user data in localStorage
+      const updatedUser = {
+        name: profileData.personal.name,
+        email: profileData.personal.email,
+        secretCode: profileData.personal.secretCode
+      };
+      localStorage.setItem('nox-buddy-user', JSON.stringify(updatedUser));
+      setUserData(updatedUser);
+      
+      alert('Personal information saved successfully!');
+    } catch (error) {
+      console.error('Error saving personal info:', error);
+      alert('Failed to save personal information');
+    }
+  };
+
+  const saveNoxInfo = () => {
+    try {
+      // Validate required fields
+      if (!profileData.nox.noxName.trim()) {
+        alert('Please enter a Nox name');
+        return;
+      }
+      
+      // Save to localStorage
+      localStorage.setItem('nox-buddy-profile', JSON.stringify(profileData));
+      
+      alert('Nox information saved successfully!');
+    } catch (error) {
+      console.error('Error saving Nox info:', error);
+      alert('Failed to save Nox information');
+    }
+  };
+
+  // Calculate dynamic usage statistics
+  const calculateUsageStats = () => {
+    const stats = {
+      totalHours: 0,
+      memorySize: 0,
+      remindersCount: reminders.length,
+      avgRuntime: 0
+    };
+    
+    // Calculate memory size (rough estimate based on data)
+    const dataSize = JSON.stringify({
+      reminders,
+      contacts,
+      memoryItems,
+      messages
+    }).length;
+    stats.memorySize = (dataSize / (1024 * 1024)).toFixed(2); // Convert to MB
+    
+    return stats;
   };
 
   // Chat message handler - backend should route based on chatMode and activeContact
@@ -459,7 +845,7 @@ const Dashboard = () => {
               {/* Logo */}
               <div className="flex items-center space-x-3">
                 <img src="/images/Stremly_black.png" alt="Logo" className="w-10 h-auto" />
-                <h1 className="font-bold text-black text-lg">NoxBuddy</h1>
+                <h1 className="font-bold text-black text-lg">Nox Buddy</h1>
               </div>
 
               {/* Horizontal Navigation */}
@@ -510,7 +896,7 @@ const Dashboard = () => {
                   <h2 className="text-xl font-bold text-black">
                     Welcome back{userData?.name ? `, ${userData.name}` : ''}
                   </h2>
-                  <p className="text-gray-500 text-sm mt-1">Ready to get productive with Nox-Buddy?</p>
+                  <p className="text-gray-500 text-sm mt-1">Ready to get productive with Nox Buddy?</p>
                 </div>
                 {activeTab === 'engage' && (
                   <button
@@ -781,7 +1167,8 @@ const Dashboard = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                         <input
                           type="text"
-                          value={userData?.name || ''}
+                          value={profileData.personal.name}
+                          onChange={(e) => updatePersonalInfo('name', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
                           placeholder="Enter your name"
                         />
@@ -790,7 +1177,8 @@ const Dashboard = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                         <input
                           type="email"
-                          value={userData?.email || ''}
+                          value={profileData.personal.email}
+                          onChange={(e) => updatePersonalInfo('email', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
                           placeholder="Enter your email"
                         />
@@ -798,6 +1186,8 @@ const Dashboard = () => {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
                         <textarea
+                          value={profileData.personal.bio}
+                          onChange={(e) => updatePersonalInfo('bio', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm resize-none"
                           rows={3}
                           placeholder="Tell us about yourself"
@@ -807,13 +1197,18 @@ const Dashboard = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Secret Code</label>
                         <input
                           type="password"
+                          value={profileData.personal.secretCode}
+                          onChange={(e) => updatePersonalInfo('secretCode', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
                           placeholder="Enter secret code"
                         />
                       </div>
                     </div>
                     <div className="mt-4 flex items-center justify-between">
-                      <button className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors">
+                      <button 
+                        onClick={savePersonalInfo}
+                        className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors"
+                      >
                         Save Changes
                       </button>
                       
@@ -851,39 +1246,45 @@ const Dashboard = () => {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Nox ID</label>
                         <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 font-mono">
-                          NOX-{Math.random().toString(36).substr(2, 8).toUpperCase()}
+                          {profileData.nox.noxId}
                         </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Nox Name</label>
                         <input
                           type="text"
+                          value={profileData.nox.noxName}
+                          onChange={(e) => updateNoxInfo('noxName', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
-                          defaultValue="Nox Assistant"
                           placeholder="Give your AI a name"
                         />
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
                         <textarea
+                          value={profileData.nox.noxBio}
+                          onChange={(e) => updateNoxInfo('noxBio', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm resize-none"
                           rows={3}
                           placeholder="Describe your AI assistant"
-                          defaultValue="Your intelligent desktop companion designed to help with various tasks and conversations."
                         />
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Instructions</label>
                         <textarea
+                          value={profileData.nox.instructions}
+                          onChange={(e) => updateNoxInfo('instructions', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm resize-none"
                           rows={3}
                           placeholder="Custom instructions for your AI"
-                          defaultValue="Be helpful, accurate, and concise in your responses. Maintain a professional yet friendly tone."
                         />
                       </div>
                     </div>
                     <div className="mt-4">
-                      <button className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors">
+                      <button 
+                        onClick={saveNoxInfo}
+                        className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors"
+                      >
                         Save Changes
                       </button>
                     </div>
@@ -900,26 +1301,26 @@ const Dashboard = () => {
                     <h3 className="text-lg font-semibold text-black mb-4">Usage Statistics</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <div className="text-xl font-bold text-black mb-1">24.5h</div>
+                        <div className="text-xl font-bold text-black mb-1">{profileData.usage.totalHours}h</div>
                         <div className="text-xs text-gray-600">Total Hours</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <div className="text-xl font-bold text-black mb-1">2.3 GB</div>
+                        <div className="text-xl font-bold text-black mb-1">{calculateUsageStats().memorySize} MB</div>
                         <div className="text-xs text-gray-600">Memory Size</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <div className="text-xl font-bold text-black mb-1">12</div>
+                        <div className="text-xl font-bold text-black mb-1">{reminders.length}</div>
                         <div className="text-xs text-gray-600">Reminders</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <div className="text-xl font-bold text-black mb-1">3.2h</div>
-                        <div className="text-xs text-gray-600">Avg Runtime</div>
+                        <div className="text-xl font-bold text-black mb-1">{contacts.length}</div>
+                        <div className="text-xs text-gray-600">Contacts</div>
                       </div>
                     </div>
                     <div className="mt-4">
-                      <button className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors">
-                        Save Changes
-                      </button>
+                      <p className="text-sm text-gray-500 italic">
+                        Usage statistics are calculated automatically based on your activity.
+                      </p>
                     </div>
                   </motion.div>
                 )}
@@ -963,24 +1364,33 @@ const Dashboard = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <input
                       type="text"
+                      value={newContactName}
+                      onChange={(e) => setNewContactName(e.target.value)}
                       className="px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm"
                       placeholder="Full Name"
                     />
                     <input
                       type="text"
+                      value={newContactNoxId}
+                      onChange={(e) => setNewContactNoxId(e.target.value)}
                       className="px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm font-mono"
                       placeholder="NOX-ID (e.g., NOX-ABC123)"
                     />
                   </div>
                   <div className="flex justify-end space-x-3 mt-4">
                     <button
-                      onClick={() => setShowNewContactForm(false)}
+                      onClick={() => {
+                        // Reset form when canceling
+                        setNewContactName('');
+                        setNewContactNoxId('');
+                        setShowNewContactForm(false);
+                      }}
                       className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={() => setShowNewContactForm(false)}
+                      onClick={createNewContact}
                       className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
                     >
                       Save Contact
@@ -998,56 +1408,44 @@ const Dashboard = () => {
                         key={contact.id}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
-                        onClick={() => setSelectedContact(contact)}
-                        className={`p-4 border-2 rounded-2xl cursor-pointer transition-all duration-200 ${
-                          selectedContact?.id === contact.id 
-                            ? 'border-black bg-black text-white shadow-lg' 
-                            : 'border-gray-200 hover:border-gray-300 bg-white hover:shadow-md'
-                        }`}
+                        className="p-4 border-2 border-gray-200 hover:border-gray-300 bg-white hover:shadow-md rounded-2xl transition-all duration-200"
                       >
                         <div className="flex items-center space-x-3 mb-3">
-                          <div className={`w-12 h-12 rounded-full flex items-center justify-center font-medium ${
-                            selectedContact?.id === contact.id ? 'bg-white text-black' : 'bg-gray-100 text-gray-700'
-                          }`}>
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center font-medium bg-gray-100 text-gray-700">
                             {contact.name.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium truncate">{contact.name}</h4>
-                            <p className={`text-xs font-mono ${
-                              selectedContact?.id === contact.id ? 'text-gray-300' : 'text-gray-500'
-                            }`}>
+                            <h4 className="font-medium truncate text-gray-900">{contact.name}</h4>
+                            <p className="text-xs font-mono text-gray-500">
                               {contact.noxId}
                             </p>
                           </div>
                         </div>
                         
-                        <div className="flex items-center justify-between text-xs">
-                          <span className={selectedContact?.id === contact.id ? 'text-gray-300' : 'text-gray-500'}>
+                        <div className="flex items-center justify-between text-xs mb-3">
+                          <span className="text-gray-500 truncate flex-1 mr-2">
                             {contact.lastMessage}
                           </span>
-                          <span className={selectedContact?.id === contact.id ? 'text-gray-300' : 'text-gray-400'}>
+                          <span className="text-gray-400 flex-shrink-0">
                             {contact.timestamp}
                           </span>
                         </div>
                         
-                        {selectedContact?.id === contact.id && (
-                          <motion.button
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Set active contact and switch to contact chat mode
-                              setActiveContact(contact);
-                              setChatMode('normal'); // Use 'normal' mode for contact chat
-                              setActiveTab('engage');
-                              // Clear previous messages when switching contacts
-                              setMessages([]);
-                            }}
-                            className="w-full mt-3 px-4 py-2 bg-white text-black rounded-3xl text-sm font-medium hover:bg-gray-100 transition-colors"
-                          >
-                            Start Chat
-                          </motion.button>
-                        )}
+                        {/* Always visible Start Chat button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Set active contact and switch to contact chat mode
+                            setActiveContact(contact);
+                            setChatMode('normal'); // Use 'normal' mode for contact chat
+                            setActiveTab('engage');
+                            // Clear previous messages when switching contacts
+                            setMessages([]);
+                          }}
+                          className="w-full px-4 py-2 bg-black text-white rounded-3xl text-sm font-medium hover:bg-gray-800 hover:shadow-md transition-all duration-200"
+                        >
+                          Start Chat
+                        </button>
                       </motion.div>
                     ))}
                   </div>
@@ -1141,6 +1539,46 @@ const Dashboard = () => {
                 </motion.div>
               )}
 
+              {/* Edit Reminder Form Modal */}
+              {editingReminder && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 bg-gray-50 border border-gray-200 rounded-2xl p-6"
+                >
+                  <h4 className="font-medium text-black mb-4">Edit Reminder</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      value={editReminderDescription}
+                      onChange={(e) => setEditReminderDescription(e.target.value)}
+                      className="px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm"
+                      placeholder="Reminder description"
+                    />
+                    <input
+                      type="datetime-local"
+                      value={editReminderDateTime}
+                      onChange={(e) => setEditReminderDateTime(e.target.value)}
+                      className="px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-3 mt-4">
+                    <button
+                      onClick={cancelEditReminder}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveEditedReminder}
+                      className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Reminders Grid */}
               <div className="flex-1">
                 {reminders.length > 0 ? (
@@ -1180,21 +1618,30 @@ const Dashboard = () => {
 
                         {/* Status */}
                         <div className="mb-4">
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            reminder.acknowledged 
-                              ? 'bg-black text-white' 
-                              : 'bg-gray-200 text-gray-700'
-                          }`}>
+                          <button
+                            onClick={() => toggleAcknowledgment(reminder.id)}
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer hover:opacity-80 ${
+                              reminder.acknowledged 
+                                ? 'bg-black text-white' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
                             {reminder.acknowledged ? '✓ Acknowledged' : 'Pending'}
-                          </span>
+                          </button>
                         </div>
 
                         {/* Actions */}
                         <div className="flex space-x-2">
-                          <button className="flex-1 px-3 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors">
+                          <button 
+                            onClick={() => startEditReminder(reminder)}
+                            className="flex-1 px-3 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors"
+                          >
                             Edit
                           </button>
-                          <button className="px-4 py-2 text-gray-600 hover:text-black rounded-3xl text-sm font-medium transition-colors">
+                          <button 
+                            onClick={() => deleteReminder(reminder.id)}
+                            className="px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-3xl text-sm font-medium transition-colors"
+                          >
                             Delete
                           </button>
                         </div>
@@ -1240,6 +1687,63 @@ const Dashboard = () => {
                 </div>
               </div>
 
+              {/* Connection Modal */}
+              {connectingIntegration && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 bg-gray-50 border border-gray-200 rounded-2xl p-6"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-medium text-black">Connect to {connectingIntegration.name}</h4>
+                    <button
+                      onClick={cancelConnectIntegration}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <p className="text-sm text-gray-600 mb-4">
+                    Enter your {connectingIntegration.name} credentials to establish the connection.
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {getRequiredFields(connectingIntegration.name).map((field) => (
+                      <div key={field}>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          {getFieldLabel(field)}
+                        </label>
+                        <input
+                          type={field.toLowerCase().includes('token') || field.toLowerCase().includes('key') ? 'password' : 'text'}
+                          value={integrationFormData[field] || ''}
+                          onChange={(e) => handleIntegrationFormChange(field, e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm"
+                          placeholder={`Enter ${getFieldLabel(field).toLowerCase()}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end space-x-3 mt-6">
+                    <button
+                      onClick={cancelConnectIntegration}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={connectIntegration}
+                      className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
+                    >
+                      Connect
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Integrations Grid - Simple 4 cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {integrations.map((integration) => (
@@ -1261,44 +1765,21 @@ const Dashboard = () => {
 
                     {/* Connection Status */}
                     {integration.connected ? (
-                      <div className="mb-4">
+                      <div>
                         <div className="flex items-center justify-center space-x-2 mb-3">
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                           <span className="text-xs text-green-600 font-medium">Connected</span>
                         </div>
-                        <div className="flex space-x-2">
-                          <button 
-                            onClick={() => {
-                              // Configure integration - backend should provide PUT /api/integrations/{id}/config
-                              console.log(`Configure ${integration.name}`);
-                            }}
-                            className="flex-1 px-3 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-xs font-medium transition-colors"
-                          >
-                            Settings
-                          </button>
-                          <button 
-                            onClick={() => {
-                              // Disconnect integration - backend should provide DELETE /api/integrations/{id}/connection
-                              const updatedIntegrations = integrations.map(app => 
-                                app.id === integration.id ? { ...app, connected: false, config: {} } : app
-                              );
-                              setIntegrations(updatedIntegrations);
-                            }}
-                            className="px-3 py-2 text-gray-600 hover:text-red-600 rounded-3xl text-xs font-medium transition-colors"
-                          >
-                            Disconnect
-                          </button>
-                        </div>
+                        <button 
+                          onClick={() => disconnectIntegration(integration.id)}
+                          className="w-full px-3 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-3xl text-xs font-medium transition-colors"
+                        >
+                          Disconnect
+                        </button>
                       </div>
                     ) : (
                       <button 
-                        onClick={() => {
-                          // Connect integration - backend should provide POST /api/integrations/{id}/connect
-                          const updatedIntegrations = integrations.map(app => 
-                            app.id === integration.id ? { ...app, connected: true } : app
-                          );
-                          setIntegrations(updatedIntegrations);
-                        }}
+                        onClick={() => startConnectIntegration(integration)}
                         className="w-full px-4 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors"
                       >
                         Connect

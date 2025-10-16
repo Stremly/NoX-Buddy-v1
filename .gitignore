@@ -97,16 +97,16 @@ Thumbs.db
 # Large binary files
 *.exe
 *.dmg
-*.pkg
-*.deb
-*.rpm
-*.msi
 
 # Backend executables
 backend/*.exe
 backend/*.app
 backend/*.deb
 backend/*.rpm
+
+# Exclude entire public folder and node_modules
+frontend/public/
+frontend/node_modules/
 
 # Large media files
 *.mp4

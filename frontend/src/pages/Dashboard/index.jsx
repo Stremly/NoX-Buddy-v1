@@ -24,11 +24,16 @@ const Dashboard = () => {
   // Chat mode - backend should handle different message routing based on mode
   const [chatMode, setChatMode] = useState('nox'); // 'nox' or 'normal'
   const [activeContact, setActiveContact] = useState(null); // Currently chatting contact
+  // Profile photo editor state
+  const [showPhotoEditor, setShowPhotoEditor] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imageScale, setImageScale] = useState(1);
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
 
   // Reset expanded state when minimizing
   const resetMinimizedState = () => {
     setIsExpanded(false);
-    setMinimizedMessages([]);
+    // Don't clear minimizedMessages - preserve them for restore
   };
 
   // Auto-resize window when messages change
@@ -113,6 +118,12 @@ const Dashboard = () => {
   const handleMinimize = async () => {
     console.log('Minimize button clicked');
     try {
+      // Transfer main messages to minimized messages before minimizing
+      if (messages.length > 0) {
+        setMinimizedMessages(prev => [...prev, ...messages]);
+        setMessages([]); // Clear main messages after transfer
+      }
+      
       // Check if we're in Electron environment
       if (typeof window !== 'undefined' && window.electronAPI) {
         console.log('Electron API available, calling resizeWindowForMinimize');
@@ -154,7 +165,14 @@ const Dashboard = () => {
         
         if (result.success) {
           console.log('Window restored successfully');
-          // Clean up minimized state before restoring
+          
+          // Transfer minimized messages to main messages if there are any
+          if (minimizedMessages.length > 0) {
+            setMessages(prev => [...prev, ...minimizedMessages]);
+            setMinimizedMessages([]); // Clear minimized messages after transfer
+          }
+          
+          // Clean up minimized state
           resetMinimizedState();
           setIsMinimized(false);
           
@@ -169,6 +187,13 @@ const Dashboard = () => {
       } else {
         // Browser mode - no actual window resize, just change state
         console.log('Electron API not available, running in browser mode');
+        
+        // Transfer minimized messages to main messages if there are any
+        if (minimizedMessages.length > 0) {
+          setMessages(prev => [...prev, ...minimizedMessages]);
+          setMinimizedMessages([]); // Clear minimized messages after transfer
+        }
+        
         resetMinimizedState();
         setIsMinimized(false);
         setIsVoiceRecording(false);
@@ -187,6 +212,8 @@ const Dashboard = () => {
   const [newContactNoxId, setNewContactNoxId] = useState('');
   const [showNewMemoryForm, setShowNewMemoryForm] = useState(false);
   const [newMemoryData, setNewMemoryData] = useState('');
+  const [editingMemory, setEditingMemory] = useState(null);
+  const [editMemoryData, setEditMemoryData] = useState('');
   // Reminders data - backend should provide GET /api/reminders
   const [reminders, setReminders] = useState([]);
   const [showNewReminderForm, setShowNewReminderForm] = useState(false);
@@ -431,15 +458,65 @@ const Dashboard = () => {
 
     const newMemoryItem = {
       id: memoryItems.length + 1,
-      data: newMemoryData.trim()
+      data: newMemoryData.trim(),
+      createdAt: new Date().toLocaleDateString(),
+      lastAccessed: 'Never',
+      accessCount: 0,
+      category: 'General',
+      priority: 'normal'
     };
 
     // Add to memory items list
-    setMemoryItems([...memoryItems, newMemoryItem]);
+    const updatedMemories = [...memoryItems, newMemoryItem];
+    setMemoryItems(updatedMemories);
+    
+    // Save to localStorage
+    localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
     
     // Reset form
     setNewMemoryData('');
     setShowNewMemoryForm(false);
+  };
+
+  // Edit memory item function
+  const startEditMemory = (memory) => {
+    setEditingMemory(memory);
+    setEditMemoryData(memory.data);
+  };
+
+  // Save edited memory
+  const saveEditedMemory = () => {
+    if (!editMemoryData.trim()) {
+      alert('Please enter memory data');
+      return;
+    }
+
+    const updatedMemories = memoryItems.map(item =>
+      item.id === editingMemory.id
+        ? { ...item, data: editMemoryData.trim() }
+        : item
+    );
+
+    setMemoryItems(updatedMemories);
+    localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
+    
+    setEditingMemory(null);
+    setEditMemoryData('');
+  };
+
+  // Cancel edit memory
+  const cancelEditMemory = () => {
+    setEditingMemory(null);
+    setEditMemoryData('');
+  };
+
+  // Delete memory item function - backend should provide DELETE /api/memory/{id}
+  const deleteMemory = (id) => {
+    if (window.confirm('Are you sure you want to delete this memory?')) {
+      const updatedMemories = memoryItems.filter(item => item.id !== id);
+      setMemoryItems(updatedMemories);
+      localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
+    }
   };
 
   // Delete memory item function
@@ -639,13 +716,14 @@ const Dashboard = () => {
 
   // Chat message handler - backend should route based on chatMode and activeContact
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && attachedFiles.length === 0) return;
 
     const userMessage = {
       id: Date.now(),
       text: inputText,
       isBot: false,
-      timestamp: new Date()
+      timestamp: new Date(),
+      attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined
     };
 
     // Backend routing logic:
@@ -656,10 +734,15 @@ const Dashboard = () => {
     if (isMinimized) {
       const newMessages = [...minimizedMessages, userMessage];
       setMinimizedMessages(newMessages);
+      
+      // Ensure expanded state is set BEFORE window resize
+      setIsExpanded(true);
+      
       // Expand window for conversation with dynamic sizing
       if (window.electronAPI && window.electronAPI.expandWindowForConversation) {
+        // Wait a tick to ensure state is updated
+        await new Promise(resolve => setTimeout(resolve, 10));
         await window.electronAPI.expandWindowForConversation(newMessages.length + 1); // +1 for incoming response
-        setIsExpanded(true);
       }
     } else {
       setMessages(prev => [...prev, userMessage]);
@@ -667,6 +750,7 @@ const Dashboard = () => {
     
     const messageText = inputText;
     setInputText('');
+    setAttachedFiles([]); // Clear attached files after sending
     
     // Show typing indicator
     const typingMessage = {
@@ -838,9 +922,9 @@ const Dashboard = () => {
 
       {/* Main Dashboard */}
       {!isMinimized && (
-        <div className="h-screen w-full bg-white flex flex-col">
+        <div className="h-screen w-full bg-white flex flex-col overflow-hidden">
           {/* Top Navigation Bar */}
-          <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
               {/* Logo */}
               <div className="flex items-center space-x-3">
@@ -869,10 +953,18 @@ const Dashboard = () => {
               {/* User Profile */}
               <div className="flex items-center space-x-3">
                 <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">
-                      {userData?.name?.charAt(0)?.toUpperCase() || 'U'}
-                    </span>
+                  <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center overflow-hidden">
+                    {profileData.personal.photo ? (
+                      <img 
+                        src={profileData.personal.photo} 
+                        alt="Profile" 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-white text-sm font-medium">
+                        {userData?.name?.charAt(0)?.toUpperCase() || 'U'}
+                      </span>
+                    )}
                   </div>
                   <div className="hidden md:block">
                     <p className="text-sm font-medium text-black">
@@ -888,9 +980,9 @@ const Dashboard = () => {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0">
             {/* Content Header */}
-            <div className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-black">
@@ -913,7 +1005,7 @@ const Dashboard = () => {
             </div>
 
             {/* Tab Content */}
-            <div className="flex-1 p-6 bg-white">
+            <div className="flex-1 p-6 bg-white min-h-0">
               {activeTab === 'engage' && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -924,25 +1016,42 @@ const Dashboard = () => {
 
               {/* Attached Files */}
               {attachedFiles.length > 0 && (
-                <div className="mb-4">
+                <div className="mb-4 flex-shrink-0">
                   <div className="flex flex-wrap gap-2">
                     {attachedFiles.map((file, index) => (
                       <div
                         key={index}
-                        className="flex items-center space-x-2 px-3 py-2 bg-gray-100 rounded-lg text-sm"
+                        className="relative group"
                       >
-                        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                        </svg>
-                        <span className="text-gray-700">{file.name}</span>
-                        <button
-                          onClick={() => removeFile(index)}
-                          className="text-gray-400 hover:text-gray-600"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                        <div className="flex items-center space-x-2 bg-gray-100 rounded-lg px-2 py-1.5 pr-7">
+                          {/* File Icon/Thumbnail */}
+                          {file.type.startsWith('image/') ? (
+                            <img 
+                              src={URL.createObjectURL(file)} 
+                              alt={file.name}
+                              className="w-8 h-8 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center">
+                              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                          )}
+                          {/* File Name */}
+                          <span className="text-xs text-gray-700 max-w-[120px] truncate">
+                            {file.name}
+                          </span>
+                          {/* Remove Button */}
+                          <button
+                            onClick={() => removeFile(index)}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -950,7 +1059,7 @@ const Dashboard = () => {
               )}
 
               {/* Chat Mode Toggle - Above Messages */}
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-3 flex-shrink-0">
                 <div className="text-sm text-gray-600">
                   {chatMode === 'nox' ? (
                     'Chatting with AI Assistant'
@@ -995,7 +1104,7 @@ const Dashboard = () => {
               </div>
 
               {/* Chat Messages */}
-              <div className="flex-1 border border-gray-200 rounded-lg mb-4 overflow-y-auto p-4 bg-white">
+              <div className="flex-1 border border-gray-200 rounded-lg mb-4 p-4 bg-white min-h-0 max-h-full overflow-y-auto">
                 {messages.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -1030,24 +1139,56 @@ const Dashboard = () => {
                         key={message.id}
                         className={`flex ${message.isBot ? 'justify-start' : 'justify-end'}`}
                       >
-                        <div
-                          className={`max-w-md px-4 py-2 rounded-lg text-sm ${
-                            message.isBot
-                              ? 'bg-gray-100 text-gray-800'
-                              : 'bg-black text-white'
-                          }`}
-                        >
-                          {message.isTyping ? (
-                            <div className="flex items-center space-x-2">
-                              <span>{message.text}</span>
-                              <div className="flex space-x-1">
-                                <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
-                                <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                                <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                        <div className={`max-w-md ${message.isBot ? '' : 'flex flex-col items-end'}`}>
+                          {/* Message Text */}
+                          <div
+                            className={`px-4 py-2 rounded-lg text-sm ${
+                              message.isBot
+                                ? 'bg-gray-100 text-gray-800'
+                                : 'bg-black text-white'
+                            }`}
+                          >
+                            {message.isTyping ? (
+                              <div className="flex items-center space-x-2">
+                                <span>{message.text}</span>
+                                <div className="flex space-x-1">
+                                  <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
+                                  <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                                  <div className="w-1 h-1 bg-current rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                                </div>
                               </div>
+                            ) : (
+                              message.text
+                            )}
+                          </div>
+                          
+                          {/* Attachments */}
+                          {message.attachments && message.attachments.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {message.attachments.map((file, index) => (
+                                <div
+                                  key={index}
+                                  className="flex items-center space-x-2 bg-gray-100 rounded-lg px-2 py-1.5"
+                                >
+                                  {file.type.startsWith('image/') ? (
+                                    <img 
+                                      src={URL.createObjectURL(file)} 
+                                      alt={file.name}
+                                      className="w-8 h-8 rounded object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center">
+                                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                  <span className="text-xs text-gray-700 max-w-[120px] truncate">
+                                    {file.name}
+                                  </span>
+                                </div>
+                              ))}
                             </div>
-                          ) : (
-                            message.text
                           )}
                         </div>
                       </div>
@@ -1057,7 +1198,7 @@ const Dashboard = () => {
               </div>
 
               {/* Chat Input */}
-              <div className="flex space-x-3">
+              <div className="flex space-x-3 flex-shrink-0">
                 <input
                   type="text"
                   value={inputText}
@@ -1154,15 +1295,218 @@ const Dashboard = () => {
                     <h3 className="text-lg font-semibold text-black mb-4">Personal Information</h3>
                     <div className="max-w-lg grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="md:col-span-2 flex items-center space-x-3 mb-2">
-                        <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
-                          <span className="text-white text-lg font-semibold">
-                            {userData?.name?.charAt(0)?.toUpperCase() || 'U'}
-                          </span>
+                        <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center overflow-hidden">
+                          {profileData.personal.photo ? (
+                            <img 
+                              src={profileData.personal.photo} 
+                              alt="Profile" 
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-white text-lg font-semibold">
+                              {userData?.name?.charAt(0)?.toUpperCase() || 'U'}
+                            </span>
+                          )}
                         </div>
-                        <button className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors">
-                          Change Photo
-                        </button>
+                        <div className="flex space-x-2">
+                          <button 
+                            onClick={() => {
+                              const input = document.createElement('input');
+                              input.type = 'file';
+                              input.accept = 'image/*';
+                              input.onchange = (e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                  // Validate file size (max 5MB)
+                                  if (file.size > 5 * 1024 * 1024) {
+                                    alert('Image size should be less than 5MB');
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    setSelectedImage(event.target.result);
+                                    setShowPhotoEditor(true);
+                                    setImageScale(1);
+                                    setImagePosition({ x: 0, y: 0 });
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              };
+                              input.click();
+                            }}
+                            className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
+                          >
+                            Change Photo
+                          </button>
+                          {profileData.personal.photo && (
+                            <button 
+                              onClick={() => {
+                                if (window.confirm('Remove profile photo?')) {
+                                  updatePersonalInfo('photo', null);
+                                  const updatedProfile = {
+                                    ...profileData,
+                                    personal: {
+                                      ...profileData.personal,
+                                      photo: null
+                                    }
+                                  };
+                                  localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
+                                }
+                              }}
+                              className="px-3 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium transition-colors"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Photo Editor Modal */}
+                      {showPhotoEditor && selectedImage && (
+                        <div className="fixed inset-0 flex items-center justify-center z-50" style={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                          backdropFilter: 'blur(12px)',
+                          WebkitBackdropFilter: 'blur(12px)'
+                        }}>
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4 shadow-2xl"
+                          >
+                            {/* Image Preview - Larger and centered */}
+                            <div className="relative w-80 h-80 mx-auto mb-8 bg-gray-50 rounded-full overflow-hidden shadow-inner">
+                              <img 
+                                src={selectedImage}
+                                alt="Preview"
+                                style={{
+                                  transform: `scale(${imageScale}) translate(${imagePosition.x}px, ${imagePosition.y}px)`,
+                                  transformOrigin: 'center',
+                                  transition: 'transform 0.1s ease-out'
+                                }}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+
+                            {/* Zoom Control - Simplified */}
+                            <div className="mb-6">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-sm font-medium text-gray-600">Zoom</span>
+                                <span className="text-sm font-semibold text-black">{Math.round(imageScale * 100)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0.5"
+                                max="3"
+                                step="0.1"
+                                value={imageScale}
+                                onChange={(e) => setImageScale(parseFloat(e.target.value))}
+                                className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-black"
+                              />
+                            </div>
+
+                            {/* Position Controls - Side by side */}
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="text-sm font-medium text-gray-600">Horizontal</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="50"
+                                  value={imagePosition.x}
+                                  onChange={(e) => setImagePosition({...imagePosition, x: parseInt(e.target.value)})}
+                                  className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-black"
+                                />
+                              </div>
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="text-sm font-medium text-gray-600">Vertical</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="50"
+                                  value={imagePosition.y}
+                                  onChange={(e) => setImagePosition({...imagePosition, y: parseInt(e.target.value)})}
+                                  className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-black"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Action Buttons - Full width */}
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => {
+                                  setShowPhotoEditor(false);
+                                  setSelectedImage(null);
+                                }}
+                                className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-2xl hover:bg-gray-200 font-medium transition-all duration-200"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // Create canvas to crop and resize image
+                                  const canvas = document.createElement('canvas');
+                                  const ctx = canvas.getContext('2d');
+                                  const size = 400; // Output size
+                                  canvas.width = size;
+                                  canvas.height = size;
+
+                                  const img = new Image();
+                                  img.onload = () => {
+                                    // Apply transformations
+                                    ctx.save();
+                                    ctx.translate(size / 2, size / 2);
+                                    ctx.scale(imageScale, imageScale);
+                                    ctx.translate(imagePosition.x, imagePosition.y);
+                                    ctx.translate(-size / 2, -size / 2);
+                                    
+                                    // Draw image
+                                    const aspectRatio = img.width / img.height;
+                                    let drawWidth = size;
+                                    let drawHeight = size;
+                                    let offsetX = 0;
+                                    let offsetY = 0;
+
+                                    if (aspectRatio > 1) {
+                                      drawWidth = size * aspectRatio;
+                                      offsetX = -(drawWidth - size) / 2;
+                                    } else {
+                                      drawHeight = size / aspectRatio;
+                                      offsetY = -(drawHeight - size) / 2;
+                                    }
+
+                                    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                                    ctx.restore();
+
+                                    // Convert to base64 and save
+                                    const croppedImage = canvas.toDataURL('image/jpeg', 0.9);
+                                    updatePersonalInfo('photo', croppedImage);
+                                    
+                                    const updatedProfile = {
+                                      ...profileData,
+                                      personal: {
+                                        ...profileData.personal,
+                                        photo: croppedImage
+                                      }
+                                    };
+                                    localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
+                                    
+                                    setShowPhotoEditor(false);
+                                    setSelectedImage(null);
+                                  };
+                                  img.src = selectedImage;
+                                }}
+                                className="flex-1 px-6 py-3 bg-black text-white rounded-2xl hover:bg-gray-800 font-medium transition-all duration-200"
+                              >
+                                Save Photo
+                              </button>
+                            </div>
+                          </motion.div>
+                        </div>
+                      )}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                         <input
@@ -1827,44 +2171,66 @@ const Dashboard = () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Memory Content</label>
                       <textarea
+                        value={newMemoryData}
+                        onChange={(e) => setNewMemoryData(e.target.value)}
                         className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm resize-none"
                         rows={4}
                         placeholder="Enter information to remember..."
                       />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                        <select className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm">
-                          <option value="">Select category</option>
-                          <option value="personal">Personal</option>
-                          <option value="work">Work</option>
-                          <option value="preferences">Preferences</option>
-                          <option value="facts">Facts</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
-                        <select className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm">
-                          <option value="normal">Normal</option>
-                          <option value="high">High</option>
-                          <option value="low">Low</option>
-                        </select>
-                      </div>
-                    </div>
                   </div>
                   <div className="flex justify-end space-x-3 mt-6">
                     <button
-                      onClick={() => setShowNewMemoryForm(false)}
+                      onClick={() => {
+                        setShowNewMemoryForm(false);
+                        setNewMemoryData('');
+                      }}
                       className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={() => {/* Create memory - backend should provide POST /api/memory */ setShowNewMemoryForm(false)}}
+                      onClick={createNewMemory}
                       className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
                     >
                       Store Memory
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Edit Memory Form Modal */}
+              {editingMemory && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-6"
+                >
+                  <h4 className="font-medium text-black mb-4">Edit Memory</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Memory Content</label>
+                      <textarea
+                        value={editMemoryData}
+                        onChange={(e) => setEditMemoryData(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm resize-none"
+                        rows={4}
+                        placeholder="Enter information to remember..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end space-x-3 mt-6">
+                    <button
+                      onClick={cancelEditMemory}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveEditedMemory}
+                      className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
+                    >
+                      Save Changes
                     </button>
                   </div>
                 </motion.div>
@@ -1926,13 +2292,13 @@ const Dashboard = () => {
                         {/* Actions */}
                         <div className="flex space-x-2">
                           <button 
-                            onClick={() => {/* Edit memory - backend should provide PUT /api/memory/{id} */}}
+                            onClick={() => startEditMemory(item)}
                             className="flex-1 px-3 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors"
                           >
                             Edit
                           </button>
                           <button 
-                            onClick={() => {/* Delete memory - backend should provide DELETE /api/memory/{id} */}}
+                            onClick={() => deleteMemory(item.id)}
                             className="px-4 py-2 text-gray-600 hover:text-red-600 rounded-3xl text-sm font-medium transition-colors"
                           >
                             Delete

@@ -29,9 +29,16 @@ const MinimizedScreen = ({
   const [hoverTimer, setHoverTimer] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartTime, setDragStartTime] = useState(null);
+  const [attachedFiles, setAttachedFiles] = useState([]);
 
-  // Timer for inactivity detection (3 seconds for spotlight mode only)
-  const INACTIVITY_TIMEOUT = 3000; // 3 seconds
+  // Clear attached files when sending message
+  const handleSendWithClear = () => {
+    onSendMessage();
+    setAttachedFiles([]);
+  };
+
+  // Timer for inactivity detection (6 seconds for spotlight mode only)
+  const INACTIVITY_TIMEOUT = 6000; // 6 seconds
   const [isUserTyping, setIsUserTyping] = useState(false);
   const [isReceivingResponse, setIsReceivingResponse] = useState(false);
   const [lastActivityTime, setLastActivityTime] = useState(Date.now());
@@ -401,8 +408,8 @@ const MinimizedScreen = ({
               className="w-10 h-10 rounded-full bg-gray-800 text-white hover:bg-gray-700 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-110"
               title="Expand to Spotlight"
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
               </svg>
             </button>
           </motion.div>
@@ -781,12 +788,59 @@ const MinimizedScreen = ({
 
             {/* Input Area */}
             <motion.div 
-              className="p-3 border-t border-gray-100 flex-shrink-0"
+              className="border-t border-gray-100 flex-shrink-0"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.3, ease: "easeOut" }}
             >
-              <div className="flex items-center space-x-2">
+              {/* Attached Files Preview */}
+              {attachedFiles.length > 0 && (
+                <div className="px-3 pt-3 pb-2">
+                  <div className="flex flex-wrap gap-2">
+                    {attachedFiles.map((file, index) => (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        className="relative group"
+                      >
+                        <div className="flex items-center space-x-2 bg-gray-100 rounded-lg px-2 py-1.5 pr-7">
+                          {/* File Icon/Thumbnail */}
+                          {file.type.startsWith('image/') ? (
+                            <img 
+                              src={URL.createObjectURL(file)} 
+                              alt={file.name}
+                              className="w-8 h-8 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center">
+                              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                          )}
+                          {/* File Name */}
+                          <span className="text-xs text-gray-700 max-w-[100px] truncate">
+                            {file.name}
+                          </span>
+                          {/* Remove Button */}
+                          <button
+                            onClick={() => setAttachedFiles(attachedFiles.filter((_, i) => i !== index))}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 flex items-center space-x-2">
                 <input
                   type="text"
                   value={inputText}
@@ -799,14 +853,49 @@ const MinimizedScreen = ({
                     handleTypingActivity();
                   }}
                   onInput={handleTypingActivity}
-                  onKeyDown={handleTypingActivity}
+                  onKeyDown={(e) => {
+                    handleTypingActivity();
+                    // Force resize window when user types to ensure proper expansion
+                    if (isExpanded && minimizedMessages.length > 0) {
+                      autoResizeWindow(minimizedMessages.length);
+                    }
+                  }}
+                  onFocus={() => {
+                    // Force resize when input is focused to ensure window is properly expanded
+                    if (isExpanded && minimizedMessages.length > 0) {
+                      autoResizeWindow(minimizedMessages.length);
+                    }
+                  }}
                   placeholder="Type a message..."
                   className="flex-1 px-3 py-2 bg-gray-50 border-0 rounded-full focus:outline-none focus:ring-2 focus:ring-black text-sm"
                   autoFocus
                 />
+                
+                {/* Attach File Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.multiple = true;
+                    input.onchange = (e) => {
+                      const files = Array.from(e.target.files);
+                      setAttachedFiles([...attachedFiles, ...files]);
+                    };
+                    input.click();
+                  }}
+                  className="p-2 bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800 rounded-lg transition-all duration-200 flex-shrink-0"
+                  title="Attach files"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                </button>
+
                 <button 
-                  onClick={onSendMessage}
-                  disabled={!inputText.trim()}
+                  onClick={handleSendWithClear}
+                  disabled={!inputText.trim() && attachedFiles.length === 0}
                   className="p-2 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex-shrink-0 shadow-sm"
                   title="Send message"
                 >

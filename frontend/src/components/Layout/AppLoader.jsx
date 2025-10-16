@@ -443,7 +443,7 @@ const handleSigninSubmit = async () => {
                               />
                               <button
                                 onClick={handleGenerateNewCode}
-                                className="px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all duration-300 bg-gray-100 text-black hover:bg-gray-200"
+                                className="px-4 py-2.5 rounded-2xle text-xs font-semibold transition-all duration-300 bg-gray-100 text-black hover:bg-gray-200"
                               >
                                 Generate
                               </button>

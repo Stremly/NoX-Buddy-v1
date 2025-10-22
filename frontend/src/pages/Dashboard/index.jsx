@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import VoiceRecording from '../VoiceRecording';
 import MinimizedScreen from '../../components/MinimizedScreen';
 import noxServiceManager from '../../services/noxServiceManager';
+import StremlyBlack from '../../../public/images/Stremly_black.png'
 
 
 const Dashboard = () => {
@@ -26,6 +27,7 @@ const Dashboard = () => {
   // Chat mode - backend should handle different message routing based on mode
   const [chatMode, setChatMode] = useState('nox'); // 'nox' or 'normal'
   const [activeContact, setActiveContact] = useState(null); // Currently chatting contact
+  
   const API_BASE = 'http://localhost:8000';
 
   // Profile photo editor state
@@ -412,31 +414,15 @@ const handleSelectContact = async (contact) => {
 
 
   // Reminders data - backend should provide GET /api/reminders
-  const [reminders, setReminders] = useState([
-    {
-      id: 1,
-      description: 'Team meeting at 3 PM',
-      reminderId: 'REM-001',
-      dateCreated: '2024-01-15',
-      dateReminder: '2024-01-20',
-      numberSent: 2,
-      acknowledged: false,
-      status: 'Active'
-    },
-    {
-      id: 2,
-      description: 'Submit project report',
-      reminderId: 'REM-002',
-      dateCreated: '2024-01-10',
-      dateReminder: '2024-01-18',
-      numberSent: 1,
-      acknowledged: true,
-      status: 'Completed'
-    }
-  ]);
+    const [reminders, setReminders] = useState([]);
   const [showNewReminderForm, setShowNewReminderForm] = useState(false);
   const [newReminderDescription, setNewReminderDescription] = useState('');
   const [newReminderDateTime, setNewReminderDateTime] = useState('');
+  const [editingReminder, setEditingReminder] = useState(null);
+  const [editReminderDescription, setEditReminderDescription] = useState('');
+  const [editReminderDateTime, setEditReminderDateTime] = useState('');
+  
+  
  
   // Integration API functions
   // Replace the mock data with empty arrays
@@ -615,6 +601,8 @@ const refreshIntegrations = async (secretCode) => {
 
 
   // Memory items data - backend should provide GET /api/memory
+    const [editingMemory, setEditingMemory] = useState(null);
+  const [editMemoryData, setEditMemoryData] = useState('');
   const [memoryItems, setMemoryItems] = useState([
     { id: 1, data: 'User prefers morning meetings' },
     { id: 2, data: 'Project deadline is March 15th' },
@@ -627,11 +615,47 @@ const refreshIntegrations = async (secretCode) => {
       const storedUser = localStorage.getItem('nox-buddy-user');
       if (storedUser) {
             const user = JSON.parse(storedUser);
+            console.log('Loaded user:', user);
+            if (!user.secretCode) {
+        console.warn("⚠️ User in localStorage has no secretCode!");
+      }
+
+      setProfileData(prev => ({
+        ...prev,
+        personal: {
+          ...prev.personal,
+          name: user.name || '',
+          email: user.email || '',
+          secretCode: user.secretCode || '',
+          bio: user.bio || '',
+          photo: user.photo || null
+        }
+      }));
+        console.log('Profile data added: ', profileData);
+        let noxId = localStorage.getItem('nox-buddy-nox-id');
+      if (!noxId) {
+        noxId = `NOX-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+        localStorage.setItem('nox-buddy-nox-id', noxId);
+      }
+      setProfileData(prev => ({
+        ...prev,
+        nox: {
+          ...prev.nox,
+          noxId: noxId
+        }
+      }));
+       const storedProfile = localStorage.getItem('nox-buddy-profile');
+      if (storedProfile) {
+        const profile = JSON.parse(storedProfile);
+        setProfileData(prev => ({
+          ...prev,
+          ...profile
+        }));
+      }
     setCurrentUser(user);
     console.log('Current user set:', user);
     console.log('🔄 Loading contacts on mount for user:', user.secretCode);
     fetchContacts(user.secretCode);
-    setEditableUserData(user);
       }
     } catch (error) {
       console.error('Error loading user data:', error);
@@ -652,7 +676,15 @@ const refreshIntegrations = async (secretCode) => {
     }
   }, []);
 
+
+
+
+
+
   // Create new reminder function - backend should provide POST /api/reminders
+
+
+    // Create new reminder function - backend should provide POST /api/reminders
   const createNewReminder = () => {
     if (!newReminderDescription.trim() || !newReminderDateTime) {
       alert('Please fill in both description and date/time');
@@ -679,38 +711,305 @@ const refreshIntegrations = async (secretCode) => {
     setShowNewReminderForm(false);
   };
 
-  //Profile Tab
-  const [editableUserData, setEditableUserData] = useState(null);
+  // Edit reminder function
+  const startEditReminder = (reminder) => {
+    setEditingReminder(reminder);
+    setEditReminderDescription(reminder.description);
+    // Convert date to datetime-local format
+    const reminderDate = new Date(reminder.dateReminder);
+    const localDateTime = reminderDate.toISOString().slice(0, 16);
+    setEditReminderDateTime(localDateTime);
+  };
 
-// Update user profile
-const updateUserProfile = async (updatedData) => {
+  // Save edited reminder function
+  const saveEditedReminder = () => {
+    if (!editReminderDescription.trim() || !editReminderDateTime) {
+      alert('Please fill in both description and date/time');
+      return;
+    }
+
+    const updatedReminders = reminders.map(reminder => 
+      reminder.id === editingReminder.id 
+        ? {
+            ...reminder,
+            description: editReminderDescription.trim(),
+            dateReminder: editReminderDateTime.split('T')[0]
+          }
+        : reminder
+    );
+
+    setReminders(updatedReminders);
+    
+    // Reset edit form
+    setEditingReminder(null);
+    setEditReminderDescription('');
+    setEditReminderDateTime('');
+  };
+
+  // Cancel edit function
+  const cancelEditReminder = () => {
+    setEditingReminder(null);
+    setEditReminderDescription('');
+    setEditReminderDateTime('');
+  };
+
+  // Delete reminder function
+  const deleteReminder = (reminderId) => {
+    if (window.confirm('Are you sure you want to delete this reminder?')) {
+      setReminders(reminders.filter(reminder => reminder.id !== reminderId));
+    }
+  };
+
+  // Toggle acknowledgment status
+  const toggleAcknowledgment = (reminderId) => {
+    const updatedReminders = reminders.map(reminder => 
+      reminder.id === reminderId 
+        ? {
+            ...reminder,
+            acknowledged: !reminder.acknowledged,
+            status: !reminder.acknowledged ? 'Completed' : 'Active'
+          }
+        : reminder
+    );
+    setReminders(updatedReminders);
+  };
+
+  //Memory Tab
+    // Create new memory item function - backend should provide POST /api/memory
+  const createNewMemory = () => {
+    if (!newMemoryData.trim()) {
+      alert('Please enter memory data');
+      return;
+    }
+
+    const newMemoryItem = {
+      id: memoryItems.length + 1,
+      data: newMemoryData.trim(),
+      createdAt: new Date().toLocaleDateString(),
+      lastAccessed: 'Never',
+      accessCount: 0,
+      category: 'General',
+      priority: 'normal'
+    };
+
+    // Add to memory items list
+    const updatedMemories = [...memoryItems, newMemoryItem];
+    setMemoryItems(updatedMemories);
+    
+    // Save to localStorage
+    localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
+    
+    // Reset form
+    setNewMemoryData('');
+    setShowNewMemoryForm(false);
+  };
+
+  // Edit memory item function
+  const startEditMemory = (memory) => {
+    setEditingMemory(memory);
+    setEditMemoryData(memory.data);
+  };
+
+  // Save edited memory
+  const saveEditedMemory = () => {
+    if (!editMemoryData.trim()) {
+      alert('Please enter memory data');
+      return;
+    }
+
+    const updatedMemories = memoryItems.map(item =>
+      item.id === editingMemory.id
+        ? { ...item, data: editMemoryData.trim() }
+        : item
+    );
+
+    setMemoryItems(updatedMemories);
+    localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
+    
+    setEditingMemory(null);
+    setEditMemoryData('');
+  };
+
+  // Cancel edit memory
+  const cancelEditMemory = () => {
+    setEditingMemory(null);
+    setEditMemoryData('');
+  };
+
+  // Delete memory item function - backend should provide DELETE /api/memory/{id}
+  const deleteMemory = (id) => {
+    if (window.confirm('Are you sure you want to delete this memory?')) {
+      const updatedMemories = memoryItems.filter(item => item.id !== id);
+      setMemoryItems(updatedMemories);
+      localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
+    }
+  };
+
+  // Delete memory item function
+  const deleteMemoryItem = (memoryId) => {
+    if (window.confirm('Are you sure you want to delete this memory item?')) {
+      setMemoryItems(memoryItems.filter(item => item.id !== memoryId));
+    }
+  };
+
+    // Profile data update functions
+    // Profile data state
+  const [profileData, setProfileData] = useState({
+    personal: {
+      name: '',
+      email: '',
+      bio: '',
+      secretCode: '',
+      photo: null
+    },
+    nox: {
+      noxId: '',
+      noxName: 'Nox Assistant',
+      noxBio: 'Your intelligent desktop companion designed to help with various tasks and conversations.',
+      instructions: 'Be helpful, accurate, and concise in your responses. Maintain a professional yet friendly tone.'
+    },
+    usage: {
+      totalHours: 0,
+      memorySize: 0,
+      remindersCount: 0,
+      avgRuntime: 0
+    }
+  });
+
+  useEffect(() => {
+  if (profileData?.personal?.secretCode) {
+    console.log("✅ Final loaded profile:", profileData);
+  }
+}, [profileData.personal.secretCode]);
+
+
+  const updatePersonalInfo = (field, value) => {
+    setProfileData(prev => ({
+      ...prev,
+      personal: {
+        ...prev.personal,
+        [field]: value
+      }
+    }));
+  };
+
+  const updateNoxInfo = (field, value) => {
+    setProfileData(prev => ({
+      ...prev,
+      nox: {
+        ...prev.nox,
+        [field]: value
+      }
+    }));
+  };
+
+const savePersonalInfo = async () => {
   try {
-    const userData = localStorage.getItem('nox-buddy-user');
-    if (!userData) {
+    const { name, email, bio, photo } = profileData.personal;
+
+    // ✅ Validation
+    if (!name.trim()) return alert('Please enter your name');
+    if (!email.trim()) return alert('Please enter your email');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return alert('Please enter a valid email address');
+
+    // ✅ Get existing user from localStorage
+    const storedUser = localStorage.getItem('nox-buddy-user');
+    if (!storedUser) {
       alert('Please sign in first');
       return;
     }
 
-    const user = JSON.parse(userData);
-    console.log('Updating user profile:', updatedData);
+    const existingUser = JSON.parse(storedUser);
 
-    const response = await axios.put(`${API_BASE}/users/${user.secretCode}`, updatedData);
-    console.log('Profile updated successfully:', response.data);
+    // ✅ Merge updated fields but preserve secretCode and other backend fields
+    const updatedUser = {
+      ...existingUser,
+      name: name || existingUser.name,
+      email: email || existingUser.email,
+      bio: bio || existingUser.bio,
+      photo: photo || existingUser.photo,
+    };
 
-    // Update localStorage with new data
-    const updatedUser = { ...user, ...updatedData };
+    // ✅ Keep secretCode intact in both user and profile
+    const updatedProfile = {
+      ...profileData,
+      personal: {
+        ...profileData.personal,
+        secretCode: existingUser.secretCode,
+      },
+    };
+
+    // ✅ Save to localStorage
     localStorage.setItem('nox-buddy-user', JSON.stringify(updatedUser));
-    setCurrentUser(updatedUser);
-    setEditableUserData(updatedUser);
+    localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
 
-    alert('Profile updated successfully!');
-    return { success: true, message: 'Profile updated successfully!' };
+    // ✅ Update state
+    setProfileData(updatedProfile);
+    setUserData(updatedUser);
+
+    // ✅ Backend update
+    if (!existingUser.secretCode) {
+      alert('Secret code is required to update profile on server');
+      return;
+    }
+
+    const response = await axios.put(
+      `${API_BASE}/users/${existingUser.secretCode}`,
+      { name, email, bio, photo }
+    );
+
+    console.log('✅ Profile updated on backend:', response.data);
+    alert('Personal information saved successfully!');
   } catch (error) {
-    console.error('Error updating profile:', error);
-    alert('Failed to update profile. Please try again.');
-    return { success: false, message: 'Failed to update profile' };
+    console.error('❌ Error saving personal info:', error);
+    alert('Failed to save personal information');
   }
 };
+
+
+
+  const saveNoxInfo = () => {
+    try {
+      // Validate required fields
+      if (!profileData.nox.noxName.trim()) {
+        alert('Please enter a Nox name');
+        return;
+      }
+      
+      // Save to localStorage
+      localStorage.setItem('nox-buddy-profile', JSON.stringify(profileData));
+      
+      alert('Nox information saved successfully!');
+    } catch (error) {
+      console.error('Error saving Nox info:', error);
+      alert('Failed to save Nox information');
+    }
+  };
+
+  // Calculate dynamic usage statistics
+  const calculateUsageStats = () => {
+    const stats = {
+      totalHours: 0,
+      memorySize: 0,
+      remindersCount: reminders.length,
+      avgRuntime: 0
+    };
+    
+    // Calculate memory size (rough estimate based on data)
+    const dataSize = JSON.stringify({
+      reminders,
+      contacts,
+      memoryItems,
+      messages
+    }).length;
+    stats.memorySize = (dataSize / (1024 * 1024)).toFixed(2); // Convert to MB
+    
+    return stats;
+  };
+
+
+
 
   // Chat message handler - backend should route based on chatMode and activeContact
 const handleSendMessage = async () => {
@@ -899,7 +1198,7 @@ const handleSendMessage = async () => {
             <div className="flex items-center justify-between">
               {/* Logo */}
               <div className="flex items-center space-x-3">
-                <img src="/images/Stremly_black.png" alt="Logo" className="w-10 h-auto" />
+                <img src={StremlyBlack} alt="Logo" className="w-10 h-auto" />
                 <h1 className="font-bold text-black text-lg">NoxBuddy</h1>
               </div>
 
@@ -1209,21 +1508,224 @@ const handleSendMessage = async () => {
                     <h3 className="text-lg font-semibold text-black mb-4">Personal Information</h3>
                     <div className="max-w-lg grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="md:col-span-2 flex items-center space-x-3 mb-2">
-                        <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
-                          <span className="text-white text-lg font-semibold">
-                            {editableUserData?.name?.charAt(0)?.toUpperCase() || 'U'}
-                          </span>
+                        <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center overflow-hidden">
+                          {profileData.personal.photo ? (
+                            <img 
+                              src={profileData.personal.photo} 
+                              alt="Profile" 
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-white text-lg font-semibold">
+                              {userData?.name?.charAt(0)?.toUpperCase() || 'U'}
+                            </span>
+                          )}
                         </div>
-                        <button className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors">
-                          Change Photo
-                        </button>
+                        <div className="flex space-x-2">
+                          <button 
+                            onClick={() => {
+                              const input = document.createElement('input');
+                              input.type = 'file';
+                              input.accept = 'image/*';
+                              input.onchange = (e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                  // Validate file size (max 5MB)
+                                  if (file.size > 5 * 1024 * 1024) {
+                                    alert('Image size should be less than 5MB');
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    setSelectedImage(event.target.result);
+                                    setShowPhotoEditor(true);
+                                    setImageScale(1);
+                                    setImagePosition({ x: 0, y: 0 });
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              };
+                              input.click();
+                            }}
+                            className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
+                          >
+                            Change Photo
+                          </button>
+                          {profileData.personal.photo && (
+                            <button 
+                              onClick={() => {
+                                if (window.confirm('Remove profile photo?')) {
+                                  updatePersonalInfo('photo', null);
+                                  const updatedProfile = {
+                                    ...profileData,
+                                    personal: {
+                                      ...profileData.personal,
+                                      photo: null
+                                    }
+                                  };
+                                  localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
+                                }
+                              }}
+                              className="px-3 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium transition-colors"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Photo Editor Modal */}
+                      {showPhotoEditor && selectedImage && (
+                        <div className="fixed inset-0 flex items-center justify-center z-50" style={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                          backdropFilter: 'blur(12px)',
+                          WebkitBackdropFilter: 'blur(12px)'
+                        }}>
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4 shadow-2xl"
+                          >
+                            {/* Image Preview - Larger and centered */}
+                            <div className="relative w-80 h-80 mx-auto mb-8 bg-gray-50 rounded-full overflow-hidden shadow-inner">
+                              <img 
+                                src={selectedImage}
+                                alt="Preview"
+                                style={{
+                                  transform: `scale(${imageScale}) translate(${imagePosition.x}px, ${imagePosition.y}px)`,
+                                  transformOrigin: 'center',
+                                  transition: 'transform 0.1s ease-out'
+                                }}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+
+                            {/* Zoom Control - Simplified */}
+                            <div className="mb-6">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-sm font-medium text-gray-600">Zoom</span>
+                                <span className="text-sm font-semibold text-black">{Math.round(imageScale * 100)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0.5"
+                                max="3"
+                                step="0.1"
+                                value={imageScale}
+                                onChange={(e) => setImageScale(parseFloat(e.target.value))}
+                                className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-black"
+                              />
+                            </div>
+
+                            {/* Position Controls - Side by side */}
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="text-sm font-medium text-gray-600">Horizontal</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="50"
+                                  value={imagePosition.x}
+                                  onChange={(e) => setImagePosition({...imagePosition, x: parseInt(e.target.value)})}
+                                  className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-black"
+                                />
+                              </div>
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="text-sm font-medium text-gray-600">Vertical</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="50"
+                                  value={imagePosition.y}
+                                  onChange={(e) => setImagePosition({...imagePosition, y: parseInt(e.target.value)})}
+                                  className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-black"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Action Buttons - Full width */}
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => {
+                                  setShowPhotoEditor(false);
+                                  setSelectedImage(null);
+                                }}
+                                className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-2xl hover:bg-gray-200 font-medium transition-all duration-200"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // Create canvas to crop and resize image
+                                  const canvas = document.createElement('canvas');
+                                  const ctx = canvas.getContext('2d');
+                                  const size = 400; // Output size
+                                  canvas.width = size;
+                                  canvas.height = size;
+
+                                  const img = new Image();
+                                  img.onload = () => {
+                                    // Apply transformations
+                                    ctx.save();
+                                    ctx.translate(size / 2, size / 2);
+                                    ctx.scale(imageScale, imageScale);
+                                    ctx.translate(imagePosition.x, imagePosition.y);
+                                    ctx.translate(-size / 2, -size / 2);
+                                    
+                                    // Draw image
+                                    const aspectRatio = img.width / img.height;
+                                    let drawWidth = size;
+                                    let drawHeight = size;
+                                    let offsetX = 0;
+                                    let offsetY = 0;
+
+                                    if (aspectRatio > 1) {
+                                      drawWidth = size * aspectRatio;
+                                      offsetX = -(drawWidth - size) / 2;
+                                    } else {
+                                      drawHeight = size / aspectRatio;
+                                      offsetY = -(drawHeight - size) / 2;
+                                    }
+
+                                    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                                    ctx.restore();
+
+                                    // Convert to base64 and save
+                                    const croppedImage = canvas.toDataURL('image/jpeg', 0.9);
+                                    updatePersonalInfo('photo', croppedImage);
+                                    
+                                    const updatedProfile = {
+                                      ...profileData,
+                                      personal: {
+                                        ...profileData.personal,
+                                        photo: croppedImage
+                                      }
+                                    };
+                                    localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
+                                    
+                                    setShowPhotoEditor(false);
+                                    setSelectedImage(null);
+                                  };
+                                  img.src = selectedImage;
+                                }}
+                                className="flex-1 px-6 py-3 bg-black text-white rounded-2xl hover:bg-gray-800 font-medium transition-all duration-200"
+                              >
+                                Save Photo
+                              </button>
+                            </div>
+                          </motion.div>
+                        </div>
+                      )}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                         <input
                           type="text"
-                          onChange={(e) => setEditableUserData(prev => ({ ...prev, name: e.target.value }))}
-                          value={editableUserData?.name || ''}
+                          value={profileData.personal.name}
+                          onChange={(e) => updatePersonalInfo('name', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
                           placeholder="Enter your name"
                         />
@@ -1232,8 +1734,8 @@ const handleSendMessage = async () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                         <input
                           type="email"
-                          onChange={(e) => setEditableUserData(prev => ({ ...prev, email: e.target.value }))}
-                          value={editableUserData?.email || ''}
+                          value={profileData.personal.email}
+                          onChange={(e) => updatePersonalInfo('email', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
                           placeholder="Enter your email"
                         />
@@ -1241,31 +1743,28 @@ const handleSendMessage = async () => {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
                         <textarea
+                          value={profileData.personal.bio}
+                          onChange={(e) => updatePersonalInfo('bio', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm resize-none"
                           rows={3}
-                          value={editableUserData?.bio || ''}
-                          onChange={(e) => setEditableUserData(prev => ({ ...prev, bio: e.target.value }))}
                           placeholder="Tell us about yourself"
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Secret Code</label>
-                        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 font-mono">
-                          {editableUserData?.secretCode}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">Your unique identifier</p>
+                        <input
+                          type="password"
+                          value={profileData.personal.secretCode}
+                          onChange={(e) => updatePersonalInfo('secretCode', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
+                          placeholder="Enter secret code"
+                        />
                       </div>
                     </div>
                     <div className="mt-4 flex items-center justify-between">
                       <button 
-                      className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors"
-                      onClick={async () => {
-          const result = await updateUserProfile({
-            name: editableUserData.name,
-            email: editableUserData.email,
-            bio: editableUserData.bio
-          });
-        }}
+                        onClick={savePersonalInfo}
+                        className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors"
                       >
                         Save Changes
                       </button>
@@ -1275,8 +1774,7 @@ const handleSendMessage = async () => {
                         onClick={() => {
                           // Clear user data
                           localStorage.removeItem('nox-buddy-user');
-                          setCurrentUser(null);
-                          setEditableUserData
+                          setUserData(null);
                           // Redirect to login/home page
                           window.location.href = '/';
                         }}
@@ -1305,39 +1803,45 @@ const handleSendMessage = async () => {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Nox ID</label>
                         <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 font-mono">
-                          NOX-{Math.random().toString(36).substr(2, 8).toUpperCase()}
+                          {profileData.nox.noxId}
                         </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Nox Name</label>
                         <input
                           type="text"
+                          value={profileData.nox.noxName}
+                          onChange={(e) => updateNoxInfo('noxName', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
-                          defaultValue="Nox Assistant"
                           placeholder="Give your AI a name"
                         />
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
                         <textarea
+                          value={profileData.nox.noxBio}
+                          onChange={(e) => updateNoxInfo('noxBio', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm resize-none"
                           rows={3}
                           placeholder="Describe your AI assistant"
-                          defaultValue="Your intelligent desktop companion designed to help with various tasks and conversations."
                         />
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Instructions</label>
                         <textarea
+                          value={profileData.nox.instructions}
+                          onChange={(e) => updateNoxInfo('instructions', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm resize-none"
                           rows={3}
                           placeholder="Custom instructions for your AI"
-                          defaultValue="Be helpful, accurate, and concise in your responses. Maintain a professional yet friendly tone."
                         />
                       </div>
                     </div>
                     <div className="mt-4">
-                      <button className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors">
+                      <button 
+                        onClick={saveNoxInfo}
+                        className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors"
+                      >
                         Save Changes
                       </button>
                     </div>
@@ -1354,26 +1858,26 @@ const handleSendMessage = async () => {
                     <h3 className="text-lg font-semibold text-black mb-4">Usage Statistics</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <div className="text-xl font-bold text-black mb-1">24.5h</div>
+                        <div className="text-xl font-bold text-black mb-1">{profileData.usage.totalHours}h</div>
                         <div className="text-xs text-gray-600">Total Hours</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <div className="text-xl font-bold text-black mb-1">2.3 GB</div>
+                        <div className="text-xl font-bold text-black mb-1">{calculateUsageStats().memorySize} MB</div>
                         <div className="text-xs text-gray-600">Memory Size</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <div className="text-xl font-bold text-black mb-1">12</div>
+                        <div className="text-xl font-bold text-black mb-1">{reminders.length}</div>
                         <div className="text-xs text-gray-600">Reminders</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <div className="text-xl font-bold text-black mb-1">3.2h</div>
-                        <div className="text-xs text-gray-600">Avg Runtime</div>
+                        <div className="text-xl font-bold text-black mb-1">{contacts.length}</div>
+                        <div className="text-xs text-gray-600">Contacts</div>
                       </div>
                     </div>
                     <div className="mt-4">
-                      <button className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 text-sm font-medium transition-colors">
-                        Save Changes
-                      </button>
+                      <p className="text-sm text-gray-500 italic">
+                        Usage statistics are calculated automatically based on your activity.
+                      </p>
                     </div>
                   </motion.div>
                 )}
@@ -1604,6 +2108,46 @@ const handleSendMessage = async () => {
                 </motion.div>
               )}
 
+              {/* Edit Reminder Form Modal */}
+              {editingReminder && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 bg-gray-50 border border-gray-200 rounded-2xl p-6"
+                >
+                  <h4 className="font-medium text-black mb-4">Edit Reminder</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      value={editReminderDescription}
+                      onChange={(e) => setEditReminderDescription(e.target.value)}
+                      className="px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm"
+                      placeholder="Reminder description"
+                    />
+                    <input
+                      type="datetime-local"
+                      value={editReminderDateTime}
+                      onChange={(e) => setEditReminderDateTime(e.target.value)}
+                      className="px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-3 mt-4">
+                    <button
+                      onClick={cancelEditReminder}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveEditedReminder}
+                      className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Reminders Grid */}
               <div className="flex-1">
                 {reminders.length > 0 ? (
@@ -1643,21 +2187,30 @@ const handleSendMessage = async () => {
 
                         {/* Status */}
                         <div className="mb-4">
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            reminder.acknowledged 
-                              ? 'bg-black text-white' 
-                              : 'bg-gray-200 text-gray-700'
-                          }`}>
+                          <button
+                            onClick={() => toggleAcknowledgment(reminder.id)}
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer hover:opacity-80 ${
+                              reminder.acknowledged 
+                                ? 'bg-black text-white' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
                             {reminder.acknowledged ? '✓ Acknowledged' : 'Pending'}
-                          </span>
+                          </button>
                         </div>
 
                         {/* Actions */}
                         <div className="flex space-x-2">
-                          <button className="flex-1 px-3 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors">
+                          <button 
+                            onClick={() => startEditReminder(reminder)}
+                            className="flex-1 px-3 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors"
+                          >
                             Edit
                           </button>
-                          <button className="px-4 py-2 text-gray-600 hover:text-black rounded-3xl text-sm font-medium transition-colors">
+                          <button 
+                            onClick={() => deleteReminder(reminder.id)}
+                            className="px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-3xl text-sm font-medium transition-colors"
+                          >
                             Delete
                           </button>
                         </div>
@@ -1684,6 +2237,7 @@ const handleSendMessage = async () => {
               </div>
             </motion.div>
           )}
+
 
           {/* Integrations Tab */}
           {activeTab === 'integrations' && (
@@ -1832,7 +2386,7 @@ const handleSendMessage = async () => {
               </div>
 
               {/* Add Memory Form Modal */}
-              {showNewMemoryForm && (
+                            {showNewMemoryForm && (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -1843,41 +2397,26 @@ const handleSendMessage = async () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Memory Content</label>
                       <textarea
+                        value={newMemoryData}
+                        onChange={(e) => setNewMemoryData(e.target.value)}
                         className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm resize-none"
                         rows={4}
                         placeholder="Enter information to remember..."
                       />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                        <select className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm">
-                          <option value="">Select category</option>
-                          <option value="personal">Personal</option>
-                          <option value="work">Work</option>
-                          <option value="preferences">Preferences</option>
-                          <option value="facts">Facts</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
-                        <select className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm">
-                          <option value="normal">Normal</option>
-                          <option value="high">High</option>
-                          <option value="low">Low</option>
-                        </select>
-                      </div>
-                    </div>
                   </div>
                   <div className="flex justify-end space-x-3 mt-6">
                     <button
-                      onClick={() => setShowNewMemoryForm(false)}
+                      onClick={() => {
+                        setShowNewMemoryForm(false);
+                        setNewMemoryData('');
+                      }}
                       className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={() => {/* Create memory - backend should provide POST /api/memory */ setShowNewMemoryForm(false)}}
+                      onClick={createNewMemory}
                       className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
                     >
                       Store Memory
@@ -1885,7 +2424,44 @@ const handleSendMessage = async () => {
                   </div>
                 </motion.div>
               )}
+              {/* Edit Memory Form Modal */}
+              {editingMemory && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-6"
+                >
+                  <h4 className="font-medium text-black mb-4">Edit Memory</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Memory Content</label>
+                      <textarea
+                        value={editMemoryData}
+                        onChange={(e) => setEditMemoryData(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent text-sm resize-none"
+                        rows={4}
+                        placeholder="Enter information to remember..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end space-x-3 mt-6">
+                    <button
+                      onClick={cancelEditMemory}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 rounded-3xl text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveEditedMemory}
+                      className="px-6 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-all duration-200"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </motion.div>
+              )}
 
+              
               {/* Memory Grid */}
               <div className="flex-1">
                 {memoryItems.length > 0 ? (
@@ -1942,13 +2518,13 @@ const handleSendMessage = async () => {
                         {/* Actions */}
                         <div className="flex space-x-2">
                           <button 
-                            onClick={() => {/* Edit memory - backend should provide PUT /api/memory/{id} */}}
+                            onClick={() => startEditMemory(item)}
                             className="flex-1 px-3 py-2 bg-black text-white rounded-3xl hover:bg-gray-800 text-sm font-medium transition-colors"
                           >
                             Edit
                           </button>
                           <button 
-                            onClick={() => {/* Delete memory - backend should provide DELETE /api/memory/{id} */}}
+                            onClick={() => deleteMemory(item.id)}
                             className="px-4 py-2 text-gray-600 hover:text-red-600 rounded-3xl text-sm font-medium transition-colors"
                           >
                             Delete

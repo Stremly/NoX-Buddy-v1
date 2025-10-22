@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import noxServiceManager from '../../services/noxServiceManager';
+import StremlyBlack from '../../../public/images/Stremly_black.png'
 import axios from 'axios'
 
 const AppLoader = ({ onLoadingComplete }) => {
@@ -338,7 +339,7 @@ const handleSigninSubmit = async () => {
                   className="flex items-center justify-center"
                 >
                   <img 
-                    src="/images/Stremly_black.png"
+                    src={StremlyBlack}
                     alt="Nox-Buddy Logo" 
                     className="w-64 h-64 object-contain"
                   />

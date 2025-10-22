@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Hide scrollbars globally */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* WebKit */
+}
+
+/* Ensure body and html don't show scrollbars */
+html, body {
+  overflow: hidden;
+}
+
+/* Transparent body for floating circle mode */
+body.floating-circle-mode {
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html.floating-circle-mode {
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Remove any focus outlines and borders from floating circle */
+.floating-circle * {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+}
+
+.floating-circle *:focus {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Allow scrolling within specific containers but hide scrollbars */
+.scrollable {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollable::-webkit-scrollbar {
+  display: none;
+}

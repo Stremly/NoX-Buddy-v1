@@ -1,0 +1,43 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+build/
+*.log
+*.cache
+*.tmp
+
+# Electron build artifacts
+dist-electron/
+*.asar
+*.asar.unpacked/
+
+# DMG files (too large for GitHub)
+*.dmg
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.spec
+
+# Environment
+.env
+.env.local
+
+# VSCode / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Others
+*.exe
+*.dll
+*.zip
+*.tar
+*.gz

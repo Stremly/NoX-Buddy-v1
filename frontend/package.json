@@ -1,0 +1,105 @@
+{
+  "name": "nox-buddy",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "public/main/electron.cjs",
+  "homepage": "./",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "electron": "cross-env NODE_ENV=development ELECTRON_START_URL=http://localhost:5173 electron .",
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run electron\"",
+    "electron-pack": "electron-builder",
+    "electron-dist": "npm run build && electron-builder",
+    "build-electron": "npm run build && electron-builder --config electron-builder.config.cjs --publish=never"
+  },
+  "dependencies": {
+    "axios": "^1.12.2",
+    "framer-motion": "^12.23.19",
+    "lucide-react": "^0.544.0",
+    "ogl": "^1.0.11",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.1",
+    "siriwave": "^2.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "electron": "^38.1.2",
+    "electron-builder": "^26.0.12",
+    "electron-reload": "^2.0.0-alpha.1",
+    "eslint": "^9.36.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.4.0",
+    "tailwindcss": "^4.1.13",
+    "vite": "^7.1.7",
+    "wait-on": "^9.0.1"
+  },
+  "build": {
+  "appId": "com.noxbuddy.app",
+  "productName": "Nox-Buddy",
+  "directories": {
+    "output": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "public/main/preload.cjs",
+    "public/main/electron.cjs"
+  ],
+  "asarUnpack": [
+    "dist/**/*"
+  ],
+  "nodeGypRebuild": false,
+  "buildDependenciesFromSource": false,
+  "extraResources": [
+    {
+      "from": "../backend/",
+      "to": "backend",
+      "filter": ["**/*", "!__pycache__", "!*.pyc", "!venv", "!.env"]
+    }
+  ],
+  "mac": {
+    "category": "public.app-category.productivity",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "public/favicon.ico"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64", "ia32"]
+      }
+    ],
+    "icon": "public/main/icons/icon.ico"
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "public/main/icons"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}
+
+}

@@ -1,0 +1,30 @@
+NoX-Buddy v2 - macOS Compatibility & Offline Mode Changes
+========================================================
+
+1. macOS Compatibility
+   - Changed build output from Windows path to cross-platform "build/"
+   - Updated electron.cjs to run Python 3 directly instead of .exe
+   - Backend now bundled in extraResources for DMG distribution
+   - Service manager enabled for all platforms (macOS, Windows, Linux)
+
+2. localStorage Fallback System
+   - Created localStorageService.js for offline data storage
+   - Backend starts gracefully without MongoDB
+   - Added /health endpoint to check MongoDB availability
+   - Automatic fallback to localStorage when MongoDB not configured
+
+3. User Experience
+   - Offline mode notification shows only after login/signup
+   - Minimal success messages: "Welcome [Name]! (Offline mode)"
+   - Clean console logs with [INFO] and [WARN] prefixes
+
+4. Configuration
+   - Created .env.example for MongoDB setup
+   - MongoDB is now optional - app works without it
+   - Data stored locally until MongoDB configured
+
+Build Commands:
+- macOS DMG: cd frontend && npm run build-electron
+
+add mongodb url in the .env file and again do the build command.. 
+

@@ -49,7 +49,7 @@
   "appId": "com.noxbuddy.app",
   "productName": "Nox-Buddy",
   "directories": {
-    "output": "C:/Temp3/NoX-Buddy-Build"
+    "output": "C:/Temp4/NoX-Buddy-Build"
   },
   "files": [
     "dist/**/*",

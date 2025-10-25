@@ -8,17 +8,26 @@ router = APIRouter(prefix="/users", tags=["Users"])
 # ✅ Create user
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(user: UserCreate):
-    try:
-        user_data = user.dict()
-        user_data["is_active"] = True
-        result = await db.users.insert_one(user_data)
-        if result.inserted_id:
-            return user_data
-    except Exception:
+    # Check if a user with the same email or secret_code exists
+    existing_user = await db.users.find_one({
+        "$or": [
+            {"email": user.email},
+            {"secret_code": user.secret_code}
+        ]
+    })
+    if existing_user:
         raise HTTPException(
             status_code=400,
-            detail="User with this secret_code or email already exists",
+            detail="User with this email or secret code already exists. Please sign in."
         )
+    
+    # Proceed to create user
+    user_data = user.dict()
+    user_data["is_active"] = True
+    result = await db.users.insert_one(user_data)
+    user_data["_id"] = str(result.inserted_id)
+    return UserResponse(**user_data)
+
 
 
 # ✅ Get user details

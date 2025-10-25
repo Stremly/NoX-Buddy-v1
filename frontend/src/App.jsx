@@ -11,13 +11,37 @@ function App() {
     console.log('Authentication completed! Loading dashboard...')
   }
 
+  const [profileData, setProfileData] = useState({
+    personal: {
+      name: '',
+      email: '',
+      bio: '',
+      secretCode: '',
+      photo: null
+    },
+    nox: {
+      noxId: '',
+      noxName: 'Nox Assistant',
+      noxBio: 'Your intelligent desktop companion...',
+      instructions: 'Be helpful, accurate, and concise...'
+    },
+    usage: {
+      totalHours: 0,
+      memorySize: 0,
+      remindersCount: 0,
+      avgRuntime: 0
+    }
+  });
+
+  const [userData, setUserData] = useState(null);
+
   return (
     <>
       <DragHandle />
       {isLoading ? (
-        <AppLoader onLoadingComplete={handleLoadingComplete} />
+        <AppLoader onLoadingComplete={handleLoadingComplete} setProfileData={setProfileData} setUserData={setUserData} />
       ) : (
-        <Dashboard />
+        <Dashboard profileData={profileData} setProfileData={setProfileData} userData={userData} setUserData={setUserData}/>
       )}
     </>
   )

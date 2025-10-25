@@ -241,36 +241,50 @@ function startNoxBackend() {
 
       let backendPath;
       let exePath;
+      let args = [];
 
       if (isDev) {
-        // Dev mode: exe inside frontend/public/main/backend
-        backendPath = path.join(__dirname, 'backend');
-        exePath = path.join(backendPath, 'backend.exe');
+        // ✅ DEV MODE: Run FastAPI directly with Python
+        backendPath = path.join(__dirname, '..', '..', '..', 'backend'); // adjust if needed
+        exePath = process.platform === 'win32' ? 'python' : 'python3';
+        const scriptPath = path.join(backendPath, 'main.py');
+        args = [scriptPath];
+
+        console.log('🧠 Dev mode detected — starting FastAPI backend via Python source');
+        console.log('📂 Backend path:', backendPath);
+        console.log('🐍 Command:', exePath, args.join(' '));
+
+        // Spawn Python process (no file existence check)
+        noxBackendProcess = spawn(exePath, args, {
+          cwd: backendPath,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          
+        });
+
       } else {
-        // Prod mode: exe inside resources folder
+        // ✅ PROD MODE: Run backend.exe
         backendPath = path.join(process.resourcesPath, 'backend');
         exePath = process.platform === 'win32'
           ? path.join(backendPath, 'backend.exe')
           : path.join(backendPath, 'backend'); // Linux/Mac
-      }
 
-      if (!fs.existsSync(exePath)) {
-        throw new Error(`Backend executable not found at: ${exePath}`);
-      }
+        if (!fs.existsSync(exePath)) {
+          throw new Error(`Backend executable not found at: ${exePath}`);
+        }
 
-      // Spawn the backend executable
-      noxBackendProcess = spawn(exePath, [], {
-        cwd: backendPath,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: process.platform === 'win32',
-        windowsHide: true,
-      });
+        noxBackendProcess = spawn(exePath, [], {
+          cwd: backendPath,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: process.platform === 'win32',
+          windowsHide: true,
+        });
+      }
 
       console.log(`🚀 Backend started: ${exePath}`);
 
       let backendStarted = false;
 
-      // Handle stdout
+      // ---------------- STDOUT ----------------
       noxBackendProcess.stdout.on('data', (data) => {
         const output = data.toString().trim();
         console.log('📨 Backend Output:', output);
@@ -281,9 +295,9 @@ function startNoxBackend() {
           console.log('✅ Backend started successfully');
 
           if (mainWindow) {
-            mainWindow.webContents.send('nox-status', { 
-              running: true, 
-              message: 'Backend started on http://localhost:8000' 
+            mainWindow.webContents.send('nox-status', {
+              running: true,
+              message: 'Backend started on http://localhost:8000'
             });
           }
 
@@ -295,44 +309,43 @@ function startNoxBackend() {
         }
       });
 
-      // Handle stderr
+      // ---------------- STDERR ----------------
       noxBackendProcess.stderr.on('data', (data) => {
         const error = data.toString().trim();
         console.error('❌ Backend Error:', error);
-
         if (mainWindow) {
           mainWindow.webContents.send('nox-response', `ERROR: ${error}`);
         }
       });
 
-      // Handle process exit
+      // ---------------- EXIT ----------------
       noxBackendProcess.on('exit', (code) => {
         console.log(`🔄 Backend exited with code ${code}`);
         noxBackendProcess = null;
         backendStarted = false;
         if (mainWindow) {
-          mainWindow.webContents.send('nox-status', { 
-            running: false, 
-            message: `Backend stopped (code: ${code})` 
+          mainWindow.webContents.send('nox-status', {
+            running: false,
+            message: `Backend stopped (code: ${code})`
           });
         }
       });
 
-      // Handle process errors
+      // ---------------- ERROR ----------------
       noxBackendProcess.on('error', (error) => {
         console.error('❌ Failed to start Backend:', error);
         noxBackendProcess = null;
         isBackendStarting = false;
         if (mainWindow) {
-          mainWindow.webContents.send('nox-status', { 
-            running: false, 
-            error: error.message 
+          mainWindow.webContents.send('nox-status', {
+            running: false,
+            error: error.message
           });
         }
         reject({ success: false, error: error.message });
       });
 
-      // Startup timeout: if backend doesn't print anything after 15s
+      // ---------------- TIMEOUT ----------------
       setTimeout(() => {
         if (!backendStarted) {
           console.warn('❌ Backend startup timeout - continuing anyway');
@@ -348,6 +361,7 @@ function startNoxBackend() {
     }
   });
 }
+
 
 
 function stopNoxBackend() {

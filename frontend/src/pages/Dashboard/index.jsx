@@ -10,11 +10,11 @@ import noxServiceManager from '../../services/noxServiceManager';
 import StremlyBlack from '../../../public/images/Stremly_black.png'
 
 
-const Dashboard = () => {
+const Dashboard = ({profileData, setProfileData, userData, setUserData}) => {
   const [currentView, setCurrentView] = useState('dashboard');
   const [activeTab, setActiveTab] = useState('engage');
   const [profileSubTab, setProfileSubTab] = useState('personal');
-  const [userData, setUserData] = useState(null);
+  //const [userData, setUserData] = useState(null);
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState([]);
   const [attachedFiles, setAttachedFiles] = useState([]);
@@ -137,6 +137,7 @@ const Dashboard = () => {
 
       console.log("Final merged integrations:", merged); // DEBUG: final state before set
       setIntegrations(merged);
+      fetchContacts(storedUser.secretCode)
     } catch (err) {
       console.error("Failed to fetch integrations:", err);
     }
@@ -610,78 +611,47 @@ const refreshIntegrations = async (secretCode) => {
   ]);
 
   // Load user data on component mount
-  useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('nox-buddy-user');
-      if (storedUser) {
-            const user = JSON.parse(storedUser);
-            console.log('Loaded user:', user);
-            if (!user.secretCode) {
-        console.warn("⚠️ User in localStorage has no secretCode!");
-      }
+/*useEffect(() => {
+  try {
+    const storedUserStr = localStorage.getItem('nox-buddy-user');
+    if (storedUserStr) {
+      const storedUser = JSON.parse(storedUserStr);
 
+      // Always update profileData.personal from storedUser
       setProfileData(prev => ({
         ...prev,
         personal: {
-          ...prev.personal,
-          name: user.name || '',
-          email: user.email || '',
-          secretCode: user.secretCode || '',
-          bio: user.bio || '',
-          photo: user.photo || null
-        }
+          name: storedUser.name || '',
+          email: storedUser.email || '',
+          bio: storedUser.bio || '',
+          secretCode: storedUser.secretCode || '',
+          photo: storedUser.photo || null
+        },
+        nox: prev.nox,       // keep existing Nox info intact
+        usage: prev.usage    // keep usage stats intact
       }));
-        console.log('Profile data added: ', profileData);
-        let noxId = localStorage.getItem('nox-buddy-nox-id');
-      if (!noxId) {
-        noxId = `NOX-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
-        localStorage.setItem('nox-buddy-nox-id', noxId);
-      }
-      setProfileData(prev => ({
-        ...prev,
-        nox: {
-          ...prev.nox,
-          noxId: noxId
-        }
-      }));
-       const storedProfile = localStorage.getItem('nox-buddy-profile');
+
+      setUserData(storedUser); // keep separate copy for updates
+
+      // Load Nox info from profile if exists
+      const storedProfile = localStorage.getItem('nox-buddy-profile');
       if (storedProfile) {
         const profile = JSON.parse(storedProfile);
         setProfileData(prev => ({
           ...prev,
-          ...profile
+          nox: profile.nox || prev.nox,
+          usage: profile.usage || prev.usage
         }));
       }
-    setCurrentUser(user);
-    console.log('Current user set:', user);
-    console.log('🔄 Loading contacts on mount for user:', user.secretCode);
-    fetchContacts(user.secretCode);
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error);
+
+      // Set current user & fetch contacts
+      setCurrentUser(storedUser);
+      fetchContacts(storedUser.secretCode);
     }
-
-    // Test Electron API availability
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      console.log('🧪 Electron API detected, testing...');
-      if (window.electronAPI.testAPI) {
-        const result = window.electronAPI.testAPI();
-        console.log('🧪 API test result:', result);
-      }
-      
-      // List available API methods
-      console.log('📋 Available Electron API methods:', Object.keys(window.electronAPI));
-    } else {
-      console.log('🌐 Running in browser mode - Electron API not available');
-    }
-  }, []);
-
-
-
-
-
-
-  // Create new reminder function - backend should provide POST /api/reminders
+  } catch (error) {
+    console.error('Error loading user data:', error);
+  }
+}, []);*/
 
 
     // Create new reminder function - backend should provide POST /api/reminders
@@ -854,7 +824,7 @@ const refreshIntegrations = async (secretCode) => {
 
     // Profile data update functions
     // Profile data state
-  const [profileData, setProfileData] = useState({
+  /*const [profileData, setProfileData] = useState({
     personal: {
       name: '',
       email: '',
@@ -875,6 +845,7 @@ const refreshIntegrations = async (secretCode) => {
       avgRuntime: 0
     }
   });
+  */
 
   useEffect(() => {
   if (profileData?.personal?.secretCode) {
@@ -913,51 +884,29 @@ const savePersonalInfo = async () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) return alert('Please enter a valid email address');
 
-    // ✅ Get existing user from localStorage
-    const storedUser = localStorage.getItem('nox-buddy-user');
-    if (!storedUser) {
-      alert('Please sign in first');
-      return;
-    }
-
-    const existingUser = JSON.parse(storedUser);
-
-    // ✅ Merge updated fields but preserve secretCode and other backend fields
     const updatedUser = {
-      ...existingUser,
-      name: name || existingUser.name,
-      email: email || existingUser.email,
-      bio: bio || existingUser.bio,
-      photo: photo || existingUser.photo,
-    };
+    ...userData,
+    name,
+    email,
+    bio,
+    photo
+  };
 
-    // ✅ Keep secretCode intact in both user and profile
-    const updatedProfile = {
-      ...profileData,
-      personal: {
-        ...profileData.personal,
-        secretCode: existingUser.secretCode,
-      },
-    };
+  setUserData(updatedUser);
+  setProfileData(prev => ({
+    ...prev,
+    personal: { ...updatedUser }
+  }));
+
+  
 
     // ✅ Save to localStorage
     localStorage.setItem('nox-buddy-user', JSON.stringify(updatedUser));
     localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
 
-    // ✅ Update state
-    setProfileData(updatedProfile);
-    setUserData(updatedUser);
-
-    // ✅ Backend update
-    if (!existingUser.secretCode) {
-      alert('Secret code is required to update profile on server');
-      return;
-    }
-
-    const response = await axios.put(
-      `${API_BASE}/users/${existingUser.secretCode}`,
-      { name, email, bio, photo }
-    );
+    if (updatedUser.secretCode) {
+    await axios.put(`${API_BASE}/users/${updatedUser.secretCode}`, { name, email, bio, photo });
+  }
 
     console.log('✅ Profile updated on backend:', response.data);
     alert('Personal information saved successfully!');
@@ -1225,15 +1174,15 @@ const handleSendMessage = async () => {
                 <div className="flex items-center space-x-2">
                   <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
                     <span className="text-white text-sm font-medium">
-                      {currentUser?.name?.charAt(0)?.toUpperCase() || 'U'}
+                      {profileData?.personal.name?.charAt(0)?.toUpperCase() || 'U'}
                     </span>
                   </div>
                   <div className="hidden md:block">
                     <p className="text-sm font-medium text-black">
-                      {currentUser?.name || 'User'}
+                      {profileData?.personal.name || 'User'}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {currentUser?.email || 'user@example.com'}
+                      {profileData?.personal.email || 'user@example.com'}
                     </p>
                   </div>
                 </div>
@@ -1517,7 +1466,7 @@ const handleSendMessage = async () => {
                             />
                           ) : (
                             <span className="text-white text-lg font-semibold">
-                              {userData?.name?.charAt(0)?.toUpperCase() || 'U'}
+                              {profileData?.personal.name?.charAt(0)?.toUpperCase() || 'U'}
                             </span>
                           )}
                         </div>
@@ -1696,16 +1645,39 @@ const handleSendMessage = async () => {
 
                                     // Convert to base64 and save
                                     const croppedImage = canvas.toDataURL('image/jpeg', 0.9);
-                                    updatePersonalInfo('photo', croppedImage);
-                                    
-                                    const updatedProfile = {
+                                      const updatedUser = { ...userData, photo: croppedImage };
+  const updatedProfile = {
+    ...profileData,
+    personal: {
+      ...profileData.personal,
+      photo: croppedImage
+    }
+  };
+
+                                    localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
+
+                                    setUserData(updatedUser);
+                                    setProfileData(prev => ({
+                                      ...prev,
+                                      personal: {
+                                      ...prev.personal,
+                                      photo: croppedImage
+                                    }
+                                    }));
+
+                                    localStorage.setItem('nox-buddy-user', JSON.stringify(updatedUser)); // ❗ important
+                                    localStorage.setItem('nox-buddy-profile', JSON.stringify({
                                       ...profileData,
                                       personal: {
-                                        ...profileData.personal,
-                                        photo: croppedImage
+                                      ...profileData.personal,
+                                      photo: croppedImage
                                       }
-                                    };
-                                    localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
+                                    }));
+                                    if (updatedUser?.secretCode) {
+                                       axios.put(`${API_BASE}/users/${updatedUser.secretCode}`, { photo: croppedImage })
+                                      .then(res => console.log('Photo updated on backend', res.data))
+                                      .catch(err => console.error('Failed to update photo', err));
+                                    }
                                     
                                     setShowPhotoEditor(false);
                                     setSelectedImage(null);
@@ -1755,7 +1727,8 @@ const handleSendMessage = async () => {
                         <input
                           type="password"
                           value={profileData.personal.secretCode}
-                          onChange={(e) => updatePersonalInfo('secretCode', e.target.value)}
+                          readOnly
+                          
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-black text-sm"
                           placeholder="Enter secret code"
                         />

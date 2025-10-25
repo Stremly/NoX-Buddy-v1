@@ -7,6 +7,7 @@ class UserBase(BaseModel):
     bio: Optional[str] = None
     nox_id: str
     contacts: List[str] = []
+    photo: Optional[str] = None
 
 class UserCreate(UserBase):
     secret_code: str = Field(..., description="Unique secret code for the user")
@@ -16,6 +17,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     bio: Optional[str] = None
     nox_id: Optional[str] = None
+    photo: Optional[str] = None
 
 class UserResponse(UserBase):
     secret_code: str

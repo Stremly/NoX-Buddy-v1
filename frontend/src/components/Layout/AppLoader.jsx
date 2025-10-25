@@ -7,7 +7,7 @@ import noxServiceManager from '../../services/noxServiceManager';
 import StremlyBlack from '../../../public/images/Stremly_black.png'
 import axios from 'axios'
 
-const AppLoader = ({ onLoadingComplete }) => {
+const AppLoader = ({ onLoadingComplete, setProfileData, setUserData }) => {
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState('Initializing...');
   const [isVisible, setIsVisible] = useState(true);
@@ -84,30 +84,58 @@ const AppLoader = ({ onLoadingComplete }) => {
   // Check for stored user data
 const checkStoredUser = async () => {
   try {
-    const userData = localStorage.getItem('nox-buddy-user');
-    if (userData) {
-      const parsedUser = JSON.parse(userData);
-      
-      // Verify user still exists in backend (optional - you can remove this if you want faster loading)
+    const userDataStr = localStorage.getItem('nox-buddy-user');
+    if (userDataStr) {
+      const parsedUser = JSON.parse(userDataStr);
+
+      // Wait for backend to be ready
+      const isRunning = await noxServiceManager.isBackendRunning();
+      if (!isRunning) {
+        console.warn('Backend not running, cannot validate stored user yet');
+        return; // optional: retry later
+      }
+
+      // Fetch latest user info from backend
       try {
-        await axios.get(`${API_BASE}/users/${parsedUser.secretCode}`);
-        
-        // Auto-login existing user - direct redirect to dashboard
-        setLoadingText(`Welcome back, ${parsedUser.name}!`);
+        const response = await axios.get(`${API_BASE}/users/${parsedUser.secretCode}`);
+        const backendUser = response.data;
+
+        // Overwrite localStorage with latest info
+        const updatedLocalUser = {
+          name: backendUser.name,
+          email: backendUser.email,
+          secretCode: backendUser.secret_code,
+          bio: backendUser.bio,
+          photo: backendUser.photo,
+          noxId: backendUser.nox_id,
+          createdAt: parsedUser.createdAt || new Date().toISOString()
+        };
+        setUserData(updatedLocalUser);
+        setProfileData(prev => ({
+          ...prev,
+          personal: {
+            name: updatedLocalUser.name,
+            email: updatedLocalUser.email,
+            bio: updatedLocalUser.bio,
+            photo: updatedLocalUser.photo,
+            secretCode: updatedLocalUser.secretCode
+          }
+        }));
+        localStorage.setItem('nox-buddy-user', JSON.stringify(updatedLocalUser));
+
+        // Auto-login existing user
+        setLoadingText(`Welcome back, ${backendUser.name}!`);
         setTimeout(() => {
           setIsVisible(false);
-          setTimeout(() => {
-            onLoadingComplete();
-          }, 500);
+          setTimeout(() => onLoadingComplete(), 500);
         }, 1000);
         return;
       } catch (error) {
-        // User doesn't exist in backend anymore, clear localStorage and show auth screen
-        console.warn('Stored user not found in backend, showing auth screen');
+        console.warn('Stored user not found in backend, clearing localStorage');
         localStorage.removeItem('nox-buddy-user');
       }
     }
-    // No user data found or invalid, show auth screen
+
     setShowSecretCodeScreen(true);
   } catch (error) {
     console.error('Error reading stored user data:', error);
@@ -115,6 +143,7 @@ const checkStoredUser = async () => {
     setShowSecretCodeScreen(true);
   }
 };
+
 
   // Generate a new secret code
   const generateSecretCode = () => {
@@ -175,12 +204,12 @@ const handleSignupSubmit = async () => {
     
     // Store user data in localStorage as well
     const localUserData = {
-      name: userName,
-      email: userEmail,
-      secretCode: secretCode,
-      noxId: noxId,
+      name: response.data.name,
+      email: response.data.email,
+      secretCode: response.data.secret_code,
+      noxId: response.data.nox_id,
       createdAt: new Date().toISOString()
-    };
+};
     
     localStorage.setItem('nox-buddy-user', JSON.stringify(localUserData));
     

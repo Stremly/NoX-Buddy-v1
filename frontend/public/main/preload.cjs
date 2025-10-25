@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('nox-status', (event, status) => callback(status));
   },
 
+  onBackendStatus: (callback) => ipcRenderer.on('nox-status', (_, data) => callback(data)),
+
   // Remove listeners
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);

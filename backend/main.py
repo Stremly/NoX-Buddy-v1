@@ -1,18 +1,35 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import uvicorn
 import asyncio
-from routes.user import router as user_router
-from routes.nox import router as nox_router
-from routes.conversations import router as conversations_router
-from routes.user_conversations import router as user_conversations_router
-from routes.integrations import router as integrations_router
-from routes.reminders import router as reminders_router
-from routes.memories import router as memories_router
 from db import init_indexes, is_mongodb_available
+from routes import user, conversations, integrations, memories, reminders, nox, user_conversations, contacts
 from dotenv import load_dotenv
 
-app = FastAPI()
+load_dotenv()
+
+# Lifespan event handler for startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    try:
+        await init_indexes()
+        if is_mongodb_available():
+            print("[INFO] Backend started with MongoDB")
+        else:
+            print("[INFO] Backend started in localStorage mode")
+            print("[INFO] To enable MongoDB, set MONGO_URI in .env file")
+    except Exception as e:
+        print(f"[WARN] Startup warning: {e}")
+        print("[INFO] Continuing in localStorage mode")
+    
+    yield
+    
+    # Shutdown (cleanup if needed)
+    print("[INFO] Shutting down backend...")
+
+app = FastAPI(lifespan=lifespan)
 
 # Add endpoint to check MongoDB status
 @app.get("/health")
@@ -33,15 +50,14 @@ app.add_middleware(
 )
 
 # Routers
-app.include_router(user_router)
-app.include_router(nox_router)
-app.include_router(conversations_router)
-app.include_router(user_conversations_router)
-app.include_router(integrations_router)
-app.include_router(reminders_router)
-app.include_router(memories_router)
-
-load_dotenv()
+app.include_router(user.router)
+app.include_router(nox.router)
+app.include_router(conversations.router)
+app.include_router(user_conversations.router)
+app.include_router(integrations.router)
+app.include_router(reminders.router)
+app.include_router(memories.router)
+app.include_router(contacts.router)
 
 # ------------------------------
 # Async message queue
@@ -81,21 +97,8 @@ async def websocket_endpoint(websocket: WebSocket):
         queue_task.cancel()  # Stop background task when client disconnects
 
 # ------------------------------
-# Startup event
+# Root endpoint
 # ------------------------------
-
-@app.on_event("startup")
-async def startup_db_client():
-    try:
-        await init_indexes()
-        if is_mongodb_available():
-            print("[INFO] Backend started with MongoDB")
-        else:
-            print("[INFO] Backend started in localStorage mode")
-            print("[INFO] To enable MongoDB, set MONGO_URI in .env file")
-    except Exception as e:
-        print(f"[WARN] Startup warning: {e}")
-        print("[INFO] Continuing in localStorage mode")
 
 @app.get("/")
 def read_root():

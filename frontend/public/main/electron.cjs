@@ -47,16 +47,24 @@ function createWindow() {
     mainWindow.show();
   });
   
-  //Key Shortcut logic - DEMO
+  //Key Shortcut logic
   mainWindow.on('focus', () => {
+    // Minimize shortcut
     globalShortcut.register('CommandOrControl+Shift+M', () => {
       console.log('🟢 Shortcut pressed: Ctrl+Shift+M');
       mainWindow.webContents.send('trigger-minimize-shortcut');
+    });
+    
+    // Expand to dashboard shortcut
+    globalShortcut.register('CommandOrControl+E', () => {
+      console.log('🟢 Shortcut pressed: Ctrl+E / Cmd+E');
+      mainWindow.webContents.send('trigger-expand-dashboard');
     });
   });
 
     mainWindow.on('blur', () => {
     globalShortcut.unregister('CommandOrControl+Shift+M');
+    globalShortcut.unregister('CommandOrControl+E');
   });
 
   app.on('will-quit', () => {

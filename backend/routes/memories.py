@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from models.memory import MemoryCreate, MemoryUpdate
-from db import db
+from db import db, is_mongodb_available
 import uuid
 
 router = APIRouter(prefix="/memories", tags=["Memories"])
@@ -14,12 +14,17 @@ def generate_memory_id():
 
 # Add a memory
 @router.post("/{secret_code}")
-def add_memory(secret_code: str, payload: MemoryCreate):
+async def add_memory(secret_code: str, payload: MemoryCreate):
     memory_obj = {
         "memory_id": generate_memory_id(),
         "memory": payload.memory
     }
-    db.memories.update_one(
+    
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles persistence
+        return {"message": "Memory added (localStorage mode)", "data": memory_obj}
+    
+    await db.memories.update_one(
         {"secret_code": secret_code},
         {"$push": {"memories": memory_obj}},
         upsert=True
@@ -28,16 +33,24 @@ def add_memory(secret_code: str, payload: MemoryCreate):
 
 # Get all memories
 @router.get("/{secret_code}")
-def get_memories(secret_code: str):
-    doc = db.memories.find_one({"secret_code": secret_code}, {"_id": 0})
+async def get_memories(secret_code: str):
+    if not is_mongodb_available():
+        # localStorage mode - return empty (frontend manages data)
+        raise HTTPException(404, "No memories found (localStorage mode)")
+    
+    doc = await db.memories.find_one({"secret_code": secret_code}, {"_id": 0})
     if not doc or "memories" not in doc:
         raise HTTPException(404, "No memories found")
     return {"memories": doc["memories"]}
 
 # Update a memory
 @router.put("/{secret_code}/{memory_id}")
-def update_memory(secret_code: str, memory_id: str, payload: MemoryUpdate):
-    result = db.memories.update_one(
+async def update_memory(secret_code: str, memory_id: str, payload: MemoryUpdate):
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles updates
+        return {"message": "Memory updated (localStorage mode)"}
+    
+    result = await db.memories.update_one(
         {"secret_code": secret_code, "memories.memory_id": memory_id},
         {"$set": {"memories.$.memory": payload.memory}}
     )
@@ -47,8 +60,12 @@ def update_memory(secret_code: str, memory_id: str, payload: MemoryUpdate):
 
 # Delete a memory
 @router.delete("/{secret_code}/{memory_id}")
-def delete_memory(secret_code: str, memory_id: str):
-    result = db.memories.update_one(
+async def delete_memory(secret_code: str, memory_id: str):
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles deletion
+        return {"message": "Memory deleted (localStorage mode)"}
+    
+    result = await db.memories.update_one(
         {"secret_code": secret_code},
         {"$pull": {"memories": {"memory_id": memory_id}}}
     )
@@ -58,8 +75,12 @@ def delete_memory(secret_code: str, memory_id: str):
 
 # Delete all memories
 @router.delete("/{secret_code}")
-def delete_all_memories(secret_code: str):
-    result = db.memories.delete_one({"secret_code": secret_code})
+async def delete_all_memories(secret_code: str):
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles deletion
+        return {"message": "All memories deleted (localStorage mode)"}
+    
+    result = await db.memories.delete_one({"secret_code": secret_code})
     if result.deleted_count == 0:
         raise HTTPException(404, "No memories found for user")
     return {"message": "All memories deleted"}

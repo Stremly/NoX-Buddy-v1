@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from models.nox import MessageUpdate
 from datetime import datetime
 import uuid
-from db import db  # your Mongo client wrapper
+from db import db, is_mongodb_available  # your Mongo client wrapper
 
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
@@ -15,6 +15,10 @@ def generate_message_id():
 
 async def check_contact(nox_id: str, peer_id: str, secret_code: str):
     """Ensure peer is in contacts and user is authorized."""
+    if not is_mongodb_available():
+        # localStorage mode - skip contact check (frontend manages)
+        return True
+    
     user = await db.users.find_one({"nox_id": nox_id, "secret_code": secret_code})
     if not user:
         raise HTTPException(403, "Invalid secret code or NoX ID")
@@ -28,6 +32,10 @@ async def check_contact(nox_id: str, peer_id: str, secret_code: str):
 @router.post("/{nox_id}/start/{peer_id}", response_model=dict)
 async def start_conversation(nox_id: str, peer_id: str, secret_code: str = Query(...)):
     await check_contact(nox_id, peer_id, secret_code)
+
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles conversation management
+        return {"message": "Conversation started between both NoX bots (localStorage mode)"}
 
     for nid, pid in [(nox_id, peer_id), (peer_id, nox_id)]:
         db.nox.update_one(
@@ -51,6 +59,11 @@ async def add_message(nox_id: str, peer_id: str, message: str, secret_code: str 
         "message": message,
         "datetime": timestamp,
     }
+    
+    if not is_mongodb_available():
+        # localStorage mode - return message data (frontend handles persistence)
+        return {"message": "Message synced (localStorage mode)", "data": sent_msg}
+    
     recv_msg = {**sent_msg, "direction": "received"}
 
     await db.nox.update_one(
@@ -69,6 +82,10 @@ async def add_message(nox_id: str, peer_id: str, message: str, secret_code: str 
 async def get_conversation(nox_id: str, peer_id: str, secret_code: str = Query(...)):
     await check_contact(nox_id, peer_id, secret_code)
 
+    if not is_mongodb_available():
+        # localStorage mode - return empty (frontend manages data)
+        raise HTTPException(404, "Conversation not found (localStorage mode)")
+
     doc = await db.nox.find_one(
         {"nox_id": nox_id}, {f"conversations.{peer_id}": 1, "_id": 0}
     )
@@ -84,6 +101,10 @@ async def update_message(
 ):
     await check_contact(nox_id, peer_id, secret_code)
 
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles updates
+        return {"message": "Message updated in both NoX histories (localStorage mode)"}
+
     for nid, pid in [(nox_id, peer_id), (peer_id, nox_id)]:
         await db.nox.update_one(
             {"nox_id": nid},
@@ -98,6 +119,10 @@ async def update_message(
 async def delete_message(nox_id: str, peer_id: str, message_id: str, secret_code: str = Query(...)):
     await check_contact(nox_id, peer_id, secret_code)
 
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles deletion
+        return {"message": "Message deleted from both NoX histories (localStorage mode)"}
+
     for nid, pid in [(nox_id, peer_id), (peer_id, nox_id)]:
         await db.nox.update_one(
             {"nox_id": nid},
@@ -110,6 +135,10 @@ async def delete_message(nox_id: str, peer_id: str, message_id: str, secret_code
 @router.delete("/{nox_id}/{peer_id}", response_model=dict)
 async def delete_conversation(nox_id: str, peer_id: str, secret_code: str = Query(...)):
     await check_contact(nox_id, peer_id, secret_code)
+
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles deletion
+        return {"message": "Conversation deleted from both NoX bots (localStorage mode)"}
 
     for nid, pid in [(nox_id, peer_id), (peer_id, nox_id)]:
         await db.nox.update_one({"nox_id": nid}, {"$unset": {f"conversations.{pid}": ""}})

@@ -16,7 +16,11 @@ db = None
 # Try to connect to MongoDB
 if MONGO_URI:
     try:
-        client = AsyncIOMotorClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+        client = AsyncIOMotorClient(
+            MONGO_URI, 
+            serverSelectionTimeoutMS=5000,
+            tlsAllowInvalidCertificates=True  # Fix SSL certificate verification on macOS
+        )
         db = client[DB_NAME]
         mongodb_available = True
         print("[INFO] MongoDB connection configured")
@@ -31,7 +35,7 @@ else:
 
 # Ensure secret_code is unique (production best practice)
 async def init_indexes():
-    if mongodb_available and db:
+    if mongodb_available and db is not None:
         try:
             await db.users.create_index([("secret_code", ASCENDING)], unique=True)
             print("[INFO] MongoDB indexes created")
@@ -42,7 +46,7 @@ async def init_indexes():
 
 # When inserting user, set is_active=True
 async def insert_user(user_data: dict):
-    if mongodb_available and db:
+    if mongodb_available and db is not None:
         user_data["is_active"] = True
         await db.users.insert_one(user_data)
     else:

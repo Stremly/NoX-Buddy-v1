@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from models.integration import IntegrationBase, IntegrationUpdate
-from db import db
+from db import db, is_mongodb_available
 
 router = APIRouter(prefix="/integrations", tags=["Integrations"])
 
@@ -9,6 +9,10 @@ router = APIRouter(prefix="/integrations", tags=["Integrations"])
 @router.put("/{secret_code}/{integration_name}")
 async def add_or_update_integration(secret_code: str, integration_name: str, payload: IntegrationUpdate):
     """Add or update integration for a user."""
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles persistence
+        return {"message": f"{integration_name} integration added/updated (localStorage mode)", "data": payload.data}
+    
     update_data = {integration_name: payload.data}
     result = await db.integrations.update_one(
         {"secret_code": secret_code},
@@ -21,6 +25,10 @@ async def add_or_update_integration(secret_code: str, integration_name: str, pay
 # Get integration details
 @router.get("/{secret_code}/{integration_name}")
 async def get_integration(secret_code: str, integration_name: str):
+    if not is_mongodb_available():
+        # localStorage mode - return empty (frontend manages data)
+        raise HTTPException(404, "Integration not found (localStorage mode)")
+    
     doc = await db.integrations.find_one({"secret_code": secret_code}, {integration_name: 1, "_id": 0})
     if not doc or integration_name not in doc:
         raise HTTPException(404, "Integration not found")
@@ -30,6 +38,10 @@ async def get_integration(secret_code: str, integration_name: str):
 # Delete an integration
 @router.delete("/{secret_code}/{integration_name}")
 async def delete_integration(secret_code: str, integration_name: str):
+    if not is_mongodb_available():
+        # localStorage mode - frontend handles deletion
+        return {"message": f"{integration_name} integration deleted (localStorage mode)"}
+    
     result = await db.integrations.update_one(
         {"secret_code": secret_code},
         {"$unset": {integration_name: ""}}
@@ -42,8 +54,11 @@ async def delete_integration(secret_code: str, integration_name: str):
 # List all integrations for a user
 @router.get("/{secret_code}")
 async def list_integrations(secret_code: str):
+    if not is_mongodb_available():
+        # localStorage mode - return empty (frontend manages data)
+        return {"integrations": {}}
+    
     doc = await db.integrations.find_one({"secret_code": secret_code}, {"_id": 0})
-    print("DEBUG: Fetched doc:", doc)  # check what is actually returned
 
     if not doc:
         return {"integrations": {}}

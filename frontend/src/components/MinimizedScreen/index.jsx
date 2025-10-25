@@ -409,7 +409,7 @@ const MinimizedScreen = ({
               title="Expand to Spotlight"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h10v10M7 17L17 7" />
               </svg>
             </button>
           </motion.div>
@@ -571,6 +571,23 @@ const MinimizedScreen = ({
                     <svg className="w-4 h-4 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none"/>
                       <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                    </svg>
+                  </motion.button>
+
+                  {/* Expand to Conversation Button */}
+                  <motion.button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRestore();
+                    }}
+                    className="relative p-2.5 bg-gray-100/80 text-gray-600 hover:bg-gray-200/80 hover:text-gray-800 rounded-2xl transition-all duration-300 cursor-pointer"
+                    title="Expand to full dashboard"
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <svg className="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h10v10M7 17L17 7" />
                     </svg>
                   </motion.button>
 
@@ -738,7 +755,7 @@ const MinimizedScreen = ({
                   title="Expand to full dashboard"
                 >
                   <svg className="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M7 7h10v10M7 17L17 7" />
                   </svg>
                 </button>
               </div>

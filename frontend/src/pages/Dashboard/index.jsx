@@ -111,46 +111,24 @@ const Dashboard = () => {
       };
     }
   }, [minimizedMessages.length, isMinimized, isExpanded]);
-
-  //Refresh Integartions
-  useEffect(() => {
-  const fetchData = async () => {
-    const storedUserStr = localStorage.getItem('nox-buddy-user');
-    const storedUser = JSON.parse(storedUserStr);
-    try {
-      const data = await getIntegrations(storedUser.secretCode); // fetch from backend
-      console.log("Backend integrations:", data); // DEBUG: log raw response
-
-      const connectedFromBackend = data.integrations || {};
-      console.log("Processed backend integrations:", connectedFromBackend); // DEBUG
-
-      // Merge backend connected apps with default integrations
-      const merged = integrations.map((intg) => {
-        const config = connectedFromBackend[intg.name];
-        console.log(`Merging ${intg.name}:`, config); // DEBUG: see each merge
-        return {
-          ...intg,
-          connected: !!config,
-          config: config || {}
-        };
-      });
-
-      console.log("Final merged integrations:", merged); // DEBUG: final state before set
-      setIntegrations(merged);
-    } catch (err) {
-      console.error("Failed to fetch integrations:", err);
-    }
-  };
-
-  fetchData();
-}, []); // runs once on startup
   
-  //Key Shortcut - DEMO
+  //Key Shortcuts
   useEffect(() => {
   if (window.electronAPI) {
+    // Minimize shortcut (Ctrl+Shift+M)
     window.electronAPI.onMinimizeShortcut(() => {
-      console.log('⌨️ Shortcut event received in React');
-      handleMinimize();
+      console.log(' Minimize shortcut received in React');
+      setIsMinimized(true);
+      setCurrentView('minimized');
+      resetMinimizedState();
+    });
+    
+    // Expand to dashboard shortcut (Ctrl+E / Cmd+E)
+    window.electronAPI.onExpandDashboard(() => {
+      console.log(' Expand dashboard shortcut received in React');
+      setIsMinimized(false);
+      setCurrentView('dashboard');
+      resetMinimizedState();
     });
   }
 }, []);
@@ -209,96 +187,112 @@ const Dashboard = () => {
         
         if (result.success) {
           console.log('Window restored successfully');
+          // Only change state if window resize succeeded
+          resetMinimizedState();
+          setIsVoiceRecording(false);
+          setIsScreenRecording(false);
+          setIsMinimized(false);
         } else {
           console.error('Failed to restore window:', result.error);
+          alert('Failed to restore window. Please try again.');
+          return; // Don't change state if resize failed
         }
       } else {
+        // Browser mode - no actual window resize, just change state
         console.log('Electron API not available, running in browser mode');
+        resetMinimizedState();
+        setIsVoiceRecording(false);
+        setIsScreenRecording(false);
+        setIsMinimized(false);
       }
-      
-      // Set the restored state
-      setIsMinimized(false);
     } catch (error) {
       console.error('Error restoring window:', error);
-      // Fallback to just setting state
-      setIsMinimized(false);
+      alert('Error restoring window: ' + error.message);
+      // Don't change state on error
     }
   };
   // Contacts data - backend should provide GET /api/contacts
   const [showNewContactForm, setShowNewContactForm] = useState(false);
-  const [showNewMemoryForm, setShowNewMemoryForm] = useState(false);
-  const [selectedContact, setSelectedContact] = useState(null);
+const [showNewMemoryForm, setShowNewMemoryForm] = useState(false);
+const [selectedContact, setSelectedContact] = useState(null);
 
-  const [currentUser, setCurrentUser] = useState(null);
+const [currentUser, setCurrentUser] = useState(null);
 const [contacts, setContacts] = useState([]);
-const [loading, setLoading] = useState(true);
-const [newContactCode, setNewContactCode] = useState('');
 const [newContactName, setNewContactName] = useState('');
 
-
-// Fetch contacts from backend
-const fetchContacts = async (secretCode) => {
-  try {
-    const response = await axios.get(`${API_BASE}/users/${secretCode}/contacts`);
-    const contactIds = response.data.contacts; // ["NOX_1760186389862"]
-    console.log('Contact IDs from backend:', contactIds);
-
-    // Since backend doesn't give more info, just use NOX ID
-    const formattedContacts = contactIds.map(noxId => ({
-      id: noxId,
-      name: noxId, // fallback to NOX ID as name
-      noxId: noxId,
-      lastMessage: 'Start a conversation...',
-      timestamp: 'Just now'
-    }));
-
-    console.log('Formatted contacts:', formattedContacts);
-    setContacts(formattedContacts);
-  } catch (error) {
-    console.error('Error fetching contacts:', error);
-    setContacts([]);
-  }
-};
-
-
-
-const addContact = async (contactSecretCode) => {
-    if (!currentUser) {
-    console.error('No current user found');
-    return { success: false, message: 'User not logged in' };
-  }
-
-  try {
-    // First verify the contact exists
-    const contactResponse = await axios.get(`${API_BASE}/users/${contactSecretCode}`);
-    console.log('Contact found:', contactResponse.data);
-    const contactData = contactResponse.data;
-
-    // Add to current user's contacts
-        console.log('Adding to contacts for user:', currentUser.secretCode);
-    const addResponse = await axios.post(`${API_BASE}/users/${currentUser.secretCode}/contacts/${contactSecretCode}`);
-    console.log('Add contact response:', addResponse.data);
-    
-    // Update local state
-    const newContact = {
-      id: contactData.secret_code,
-      name: contactData.name,
-      noxId: contactData.nox_id,
-      email: contactData.email,
-      lastMessage: 'Start a conversation...',
-      timestamp: 'Just now'
-    };
-    
-    setContacts(prev => [...prev, newContact]);
-    setShowNewContactForm(false);
-    
-    return { success: true, message: 'Contact added successfully!' };
-  } catch (error) {
-    if (error.response?.status === 404) {
-      return { success: false, message: 'User not found with this secret code' };
+  // Fetch contacts from backend
+  const fetchContacts = async (secretCode) => {
+    try {
+      const response = await axios.get(`${API_BASE}/contacts/${secretCode}`);
+      const contactsData = response.data.contacts;
+      console.log('Contacts from backend:', contactsData);
+      setContacts(contactsData);
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+      // Fallback to localStorage
+      const storedContacts = localStorage.getItem('nox-buddy-contacts');
+      if (storedContacts) {
+        setContacts(JSON.parse(storedContacts));
+      }
     }
-    return { success: false, message: 'Failed to add contact' };
+  };
+
+
+
+  const addContact = async () => {
+  if (!newContactName.trim() || !newContactNoxId.trim()) {
+    alert('Please fill in both name and NOX-ID');
+    return;
   }
+
+  if (!newContactNoxId.startsWith('NOX-')) {
+    alert('NOX-ID must start with "NOX-"');
+    return;
+  }
+
+  // Check for duplicates
+  if (contacts.some(contact => contact.nox_id === newContactNoxId)) {
+    alert('Contact with this NOX-ID already exists');
+    return;
+  }
+
+  try {
+    const userData = localStorage.getItem('nox-buddy-user');
+    if (userData) {
+      const user = JSON.parse(userData);
+      if (user.secretCode) {
+        try {
+          const response = await axios.post(`${API_BASE}/contacts/${user.secretCode}`, {
+            name: newContactName.trim(),
+            nox_id: newContactNoxId.trim()
+          });
+          console.log('✅ Contact saved to backend:', response.data);
+        } catch (error) {
+          console.log('⚠️ Backend unavailable, using localStorage');
+        }
+      }
+    }
+  } catch (error) {
+    console.log('⚠️ Using localStorage mode for contacts');
+  }
+
+  // Always update local state and localStorage
+  const newContact = {
+    id: Date.now().toString(),
+    name: newContactName.trim(),
+    nox_id: newContactNoxId.trim(),
+    last_message: null,
+    last_message_time: null
+  };
+
+  const updatedContacts = [...contacts, newContact];
+  setContacts(updatedContacts);
+  localStorage.setItem('nox-buddy-contacts', JSON.stringify(updatedContacts));
+
+  // Reset form
+  setNewContactName('');
+  setNewContactNoxId('');
+  setShowNewContactForm(false);
 };
 
 const deleteContact = async (contactId) => {
@@ -556,7 +550,7 @@ const refreshIntegrations = async (secretCode) => {
     const connectedFromBackend = backendRes.integrations || {};
 
     // Merge backend data with all available integrations
-    const merged = integrations.map((intg) => {
+    const merged = defaultIntegrations.map((intg) => {
       const config = connectedFromBackend[intg.name];
       return {
         ...intg,
@@ -571,6 +565,12 @@ const refreshIntegrations = async (secretCode) => {
   }
 };
 
+  // Fetch integrations on mount when user is loaded
+  useEffect(() => {
+    if (currentUser && currentUser.secretCode) {
+      refreshIntegrations(currentUser.secretCode);
+    }
+  }, [currentUser]);
 
   // Get required fields for each integration type
   const getRequiredFields = (integrationName) => {
@@ -600,14 +600,65 @@ const refreshIntegrations = async (secretCode) => {
   };
 
 
-  // Memory items data - backend should provide GET /api/memory
-    const [editingMemory, setEditingMemory] = useState(null);
+  // Memory items data - integrated with backend
+  const [editingMemory, setEditingMemory] = useState(null);
   const [editMemoryData, setEditMemoryData] = useState('');
-  const [memoryItems, setMemoryItems] = useState([
-    { id: 1, data: 'User prefers morning meetings' },
-    { id: 2, data: 'Project deadline is March 15th' },
-    { id: 3, data: 'Favorite programming language is JavaScript' }
-  ]);
+  const [memoryItems, setMemoryItems] = useState([]);
+
+  // Load reminders and memories from backend/localStorage on mount
+  useEffect(() => {
+    const storedReminders = localStorage.getItem('nox-buddy-reminders');
+    if (storedReminders) {
+      setReminders(JSON.parse(storedReminders));
+    }
+    
+    // Fetch memories from backend
+    fetchMemories();
+  }, []);
+
+  // Fetch user profile from backend
+  const fetchUserProfile = async (secretCode) => {
+    try {
+      const response = await axios.get(`${API_BASE}/users/${secretCode}`);
+      console.log('✅ User profile loaded from backend:', response.data);
+      
+      // Update user data with backend data
+      const backendUser = response.data;
+      const updatedUser = {
+        secretCode: secretCode,
+        name: backendUser.name,
+        email: backendUser.email,
+        bio: backendUser.bio,
+        nox_id: backendUser.nox_id,
+        photo: backendUser.photo
+      };
+      
+      // Update profile data
+      const updatedProfile = {
+        ...profileData,
+        personal: {
+          ...profileData.personal,
+          name: backendUser.name || '',
+          email: backendUser.email || '',
+          bio: backendUser.bio || '',
+          secretCode: secretCode,
+          photo: backendUser.photo || null
+        }
+      };
+      
+      setUserData(updatedUser);
+      setProfileData(updatedProfile);
+      
+      // Update localStorage with backend data
+      localStorage.setItem('nox-buddy-user', JSON.stringify(updatedUser));
+      localStorage.setItem('nox-buddy-profile', JSON.stringify(updatedProfile));
+      
+      return updatedUser;
+    } catch (error) {
+      console.log('⚠️ Backend unavailable, using localStorage');
+      return null;
+    }
+  };
 
   // Load user data on component mount
   useEffect(() => {
@@ -620,17 +671,38 @@ const refreshIntegrations = async (secretCode) => {
         console.warn("⚠️ User in localStorage has no secretCode!");
       }
 
-      setProfileData(prev => ({
-        ...prev,
-        personal: {
-          ...prev.personal,
-          name: user.name || '',
-          email: user.email || '',
-          secretCode: user.secretCode || '',
-          bio: user.bio || '',
-          photo: user.photo || null
-        }
-      }));
+      // Try to fetch updated profile from backend first
+      if (user.secretCode) {
+        fetchUserProfile(user.secretCode).then(backendUser => {
+          if (!backendUser) {
+            // Fallback to localStorage data
+            setProfileData(prev => ({
+              ...prev,
+              personal: {
+                ...prev.personal,
+                name: user.name || '',
+                email: user.email || '',
+                secretCode: user.secretCode || '',
+                bio: user.bio || '',
+                photo: user.photo || null
+              }
+            }));
+          }
+        });
+      } else {
+        // No secret code, use localStorage only
+        setProfileData(prev => ({
+          ...prev,
+          personal: {
+            ...prev.personal,
+            name: user.name || '',
+            email: user.email || '',
+            secretCode: user.secretCode || '',
+            bio: user.bio || '',
+            photo: user.photo || null
+          }
+        }));
+      }
         console.log('Profile data added: ', profileData);
         let noxId = localStorage.getItem('nox-buddy-nox-id');
       if (!noxId) {
@@ -684,26 +756,50 @@ const refreshIntegrations = async (secretCode) => {
   // Create new reminder function - backend should provide POST /api/reminders
 
 
-    // Create new reminder function - backend should provide POST /api/reminders
-  const createNewReminder = () => {
+    // Create new reminder function - with backend integration
+  const createNewReminder = async () => {
     if (!newReminderDescription.trim() || !newReminderDateTime) {
       alert('Please fill in both description and date/time');
       return;
     }
 
     const newReminder = {
-      id: reminders.length + 1,
+      id: Date.now(), // Use timestamp for unique ID
       description: newReminderDescription.trim(),
       reminderId: `REM-${String(reminders.length + 1).padStart(3, '0')}`,
       dateCreated: new Date().toISOString().split('T')[0],
       dateReminder: newReminderDateTime.split('T')[0],
+      reminderTime: newReminderDateTime,
       numberSent: 0,
       acknowledged: false,
       status: 'Active'
     };
 
-    // Add to reminders list
-    setReminders([...reminders, newReminder]);
+    try {
+      // Try backend first if available
+      const userData = localStorage.getItem('nox-buddy-user');
+      if (userData) {
+        const user = JSON.parse(userData);
+        if (user.secretCode) {
+          try {
+            const response = await axios.post(`${API_BASE}/reminders/${user.secretCode}`, {
+              reminder_description: newReminderDescription.trim(),
+              reminder_time: new Date(newReminderDateTime).toISOString()
+            });
+            console.log('✅ Reminder saved to backend:', response.data);
+          } catch (error) {
+            console.log('⚠️ Backend unavailable, using localStorage');
+          }
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ Using localStorage mode for reminders');
+    }
+
+    // Always update local state and localStorage
+    const updatedReminders = [...reminders, newReminder];
+    setReminders(updatedReminders);
+    localStorage.setItem('nox-buddy-reminders', JSON.stringify(updatedReminders));
     
     // Reset form
     setNewReminderDescription('');
@@ -775,15 +871,14 @@ const refreshIntegrations = async (secretCode) => {
   };
 
   //Memory Tab
-    // Create new memory item function - backend should provide POST /api/memory
-  const createNewMemory = () => {
+  const createNewMemory = async () => {
     if (!newMemoryData.trim()) {
       alert('Please enter memory data');
       return;
     }
 
     const newMemoryItem = {
-      id: memoryItems.length + 1,
+      id: Date.now().toString(),
       data: newMemoryData.trim(),
       createdAt: new Date().toLocaleDateString(),
       lastAccessed: 'Never',
@@ -792,11 +887,28 @@ const refreshIntegrations = async (secretCode) => {
       priority: 'normal'
     };
 
-    // Add to memory items list
+    try {
+      const userData = localStorage.getItem('nox-buddy-user');
+      if (userData) {
+        const user = JSON.parse(userData);
+        if (user.secretCode) {
+          try {
+            const response = await axios.post(`${API_BASE}/memories/${user.secretCode}`, {
+              memory: newMemoryData.trim()
+            });
+            console.log('✅ Memory saved to backend:', response.data);
+          } catch (error) {
+            console.log('⚠️ Backend unavailable, using localStorage');
+          }
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ Using localStorage mode for memories');
+    }
+
+    // Always update local state and localStorage
     const updatedMemories = [...memoryItems, newMemoryItem];
     setMemoryItems(updatedMemories);
-    
-    // Save to localStorage
     localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
     
     // Reset form
@@ -836,19 +948,70 @@ const refreshIntegrations = async (secretCode) => {
     setEditMemoryData('');
   };
 
-  // Delete memory item function - backend should provide DELETE /api/memory/{id}
-  const deleteMemory = (id) => {
-    if (window.confirm('Are you sure you want to delete this memory?')) {
-      const updatedMemories = memoryItems.filter(item => item.id !== id);
-      setMemoryItems(updatedMemories);
-      localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
+  // Fetch memories from backend
+  const fetchMemories = async () => {
+    try {
+      const userData = localStorage.getItem('nox-buddy-user');
+      if (userData) {
+        const user = JSON.parse(userData);
+        if (user.secretCode) {
+          try {
+            const response = await axios.get(`${API_BASE}/memories/${user.secretCode}`);
+            console.log('✅ Memories loaded from backend:', response.data);
+            if (response.data.memories) {
+              // Convert backend format to frontend format
+              const formattedMemories = response.data.memories.map(mem => ({
+                id: mem.memory_id,
+                data: mem.memory,
+                createdAt: new Date().toLocaleDateString(),
+                lastAccessed: 'Never',
+                accessCount: 0,
+                category: 'General',
+                priority: 'normal'
+              }));
+              setMemoryItems(formattedMemories);
+              return;
+            }
+          } catch (error) {
+            console.log('⚠️ Backend unavailable, using localStorage');
+          }
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ Using localStorage mode for memories');
+    }
+
+    // Fallback to localStorage
+    const storedMemories = localStorage.getItem('nox-buddy-memories');
+    if (storedMemories) {
+      setMemoryItems(JSON.parse(storedMemories));
     }
   };
 
   // Delete memory item function
-  const deleteMemoryItem = (memoryId) => {
+  const deleteMemoryItem = async (memoryId) => {
     if (window.confirm('Are you sure you want to delete this memory item?')) {
-      setMemoryItems(memoryItems.filter(item => item.id !== memoryId));
+      try {
+        const userData = localStorage.getItem('nox-buddy-user');
+        if (userData) {
+          const user = JSON.parse(userData);
+          if (user.secretCode) {
+            try {
+              await axios.delete(`${API_BASE}/memories/${user.secretCode}/${memoryId}`);
+              console.log('✅ Memory deleted from backend');
+            } catch (error) {
+              console.log('⚠️ Backend unavailable, using localStorage');
+            }
+          }
+        }
+      } catch (error) {
+        console.log('⚠️ Using localStorage mode for memories');
+      }
+
+      // Always update local state and localStorage
+      const updatedMemories = memoryItems.filter(item => item.id !== memoryId);
+      setMemoryItems(updatedMemories);
+      localStorage.setItem('nox-buddy-memories', JSON.stringify(updatedMemories));
     }
   };
 
@@ -1015,6 +1178,27 @@ const savePersonalInfo = async () => {
 const handleSendMessage = async () => {
   if (!inputText.trim()) return;
 
+  // If we're in minimized mode and not expanded, expand to conversation mode
+  if (isMinimized && !isExpanded) {
+    setIsExpanded(true);
+    setMinimizedMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      text: inputText,
+      isBot: false,
+      timestamp: new Date(),
+      isTyping: false,
+    }]);
+    
+    // Auto-resize window for conversation mode
+    if (window.electronAPI && window.electronAPI.expandWindowForConversation) {
+      try {
+        await window.electronAPI.expandWindowForConversation();
+      } catch (error) {
+        console.error('Error expanding window:', error);
+      }
+    }
+  }
+
   const userMessage = {
     id: Date.now().toString(),
     text: inputText,
@@ -1023,8 +1207,13 @@ const handleSendMessage = async () => {
     isTyping: false,
   };
 
-  // Add to UI first
-  setMessages(prev => [...prev, userMessage]);
+  // Add to appropriate message array based on mode
+  if (isMinimized && isExpanded) {
+    setMinimizedMessages(prev => [...prev, userMessage]);
+  } else {
+    setMessages(prev => [...prev, userMessage]);
+  }
+  
   const messageText = inputText;
   setInputText('');
 
@@ -1036,7 +1225,13 @@ const handleSendMessage = async () => {
     isTyping: true,
     timestamp: new Date(),
   };
-  setMessages(prev => [...prev, typingMessage]);
+  
+  // Add typing indicator to appropriate message array
+  if (isMinimized && isExpanded) {
+    setMinimizedMessages(prev => [...prev, typingMessage]);
+  } else {
+    setMessages(prev => [...prev, typingMessage]);
+  }
 
   if (chatMode === "normal" && activeContact) {
     // Send to contact and save in DB
@@ -1060,10 +1255,18 @@ const handleSendMessage = async () => {
       isTyping: false,
     };
 
-    setMessages(prev => {
-      const filtered = prev.filter(msg => !msg.isTyping);
-      return [...filtered, botResponse];
-    });
+    // Update appropriate message array
+    if (isMinimized && isExpanded) {
+      setMinimizedMessages(prev => {
+        const filtered = prev.filter(msg => !msg.isTyping);
+        return [...filtered, botResponse];
+      });
+    } else {
+      setMessages(prev => {
+        const filtered = prev.filter(msg => !msg.isTyping);
+        return [...filtered, botResponse];
+      });
+    }
 
     await addMessageToDB(currentUser.secretCode, activeContact.noxId, currentUser.noxId, botResponse.text);
 
@@ -1077,10 +1280,18 @@ const handleSendMessage = async () => {
       timestamp: new Date(),
     };
 
-    setMessages(prev => {
-      const filtered = prev.filter(msg => !msg.isTyping);
-      return [...filtered, botResponse];
-    });
+    // Update appropriate message array
+    if (isMinimized && isExpanded) {
+      setMinimizedMessages(prev => {
+        const filtered = prev.filter(msg => !msg.isTyping);
+        return [...filtered, botResponse];
+      });
+    } else {
+      setMessages(prev => {
+        const filtered = prev.filter(msg => !msg.isTyping);
+        return [...filtered, botResponse];
+      });
+    }
   }
 };
 

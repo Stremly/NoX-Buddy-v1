@@ -26,9 +26,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeToTray: () => ipcRenderer.invoke('minimize-to-tray'),
   showFromTray: () => ipcRenderer.invoke('show-from-tray'),
   
-  //Key Shortcut - DEMO
+  //Key Shortcuts
   onMinimizeShortcut: (callback) => {
   ipcRenderer.on('trigger-minimize-shortcut', callback);
+  },
+  onExpandDashboard: (callback) => {
+  ipcRenderer.on('trigger-expand-dashboard', callback);
   },
 
   // Window resize functionality for minimize

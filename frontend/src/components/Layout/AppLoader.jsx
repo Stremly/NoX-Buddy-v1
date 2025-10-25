@@ -4,8 +4,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import noxServiceManager from '../../services/noxServiceManager';
-import localStorageService from '../../services/localStorageService';
-import StremlyBlack from '../../../public/images/Stremly_black.png'
 import axios from 'axios'
 
 const AppLoader = ({ onLoadingComplete }) => {
@@ -20,8 +18,8 @@ const AppLoader = ({ onLoadingComplete }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [authMode, setAuthMode] = useState('signup');
-  const [useLocalStorage, setUseLocalStorage] = useState(false);
-  const [showMongoDBWarning, setShowMongoDBWarning] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [retrievedSecretKey, setRetrievedSecretKey] = useState(null);
   const API_BASE = 'http://localhost:8000';
 
 
@@ -43,40 +41,19 @@ const AppLoader = ({ onLoadingComplete }) => {
         setProgress(step.progress);
         setLoadingText(step.text);
         
-        // Special handling for backend startup step
+        // Check backend availability - REQUIRED for auth
         if (step.progress === 50) {
           try {
-            await noxServiceManager.startBackend();
-            console.log('✅ Backend startup handled by main process');
-            
-            // Check MongoDB availability
-            try {
-              const healthCheck = await axios.get(`${API_BASE}/health`, { timeout: 3000 });
-              if (healthCheck.data.mode === 'localStorage') {
-                setUseLocalStorage(true);
-                setShowMongoDBWarning(true);
-                setLoadingText('Running in offline mode...');
-                localStorageService.enableLocalStorageMode();
-              } else {
-                setLoadingText('Backend connected...');
-              }
-            } catch (error) {
-              console.log('⚠️ Backend health check failed, using localStorage');
-              setUseLocalStorage(true);
-              setShowMongoDBWarning(true);
-              setLoadingText('Running in offline mode...');
-              localStorageService.enableLocalStorageMode();
-            }
-            
-            const platformMsg = noxServiceManager.getPlatformMessage();
-            if (platformMsg) {
-              setLoadingText('Demo mode active...');
+            const healthCheck = await axios.get(`${API_BASE}/health`, { timeout: 3000 });
+            if (healthCheck.data.mongodb_available) {
+              setLoadingText('Backend connected...');
+            } else {
+              throw new Error('MongoDB not available');
             }
           } catch (error) {
-            console.error('❌ Failed to start service during loading:', error);
-            setLoadingText('Service startup failed, continuing...');
-            setUseLocalStorage(true);
-            localStorageService.enableLocalStorageMode();
+            setError('Backend connection required. Please start the backend server.');
+            setLoadingText('Backend connection failed');
+            return;
           }
         }
         
@@ -172,10 +149,10 @@ const handleSignupSubmit = async () => {
   setSuccess('Creating your account...');
 
   try {
-    // Generate a nox_id (you can modify this logic as needed)
-    const noxId = `nox_${Date.now()}`;
+    // Generate a nox_id
+    const noxId = `NOX-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
     
-    // Prepare user data
+    // Prepare user data for backend
     const userData = {
       name: userName,
       email: userEmail,
@@ -183,6 +160,11 @@ const handleSignupSubmit = async () => {
       nox_id: noxId,
       contacts: []
     };
+    
+    // Create user via backend API - REQUIRED
+    console.log('Creating user via backend API');
+    const response = await axios.post(`${API_BASE}/users/`, userData);
+    console.log('✅ User created in MongoDB:', response.data);
     
     // Store in localStorage for session
     const localUserData = {
@@ -193,19 +175,8 @@ const handleSignupSubmit = async () => {
       createdAt: new Date().toISOString()
     };
     
-    if (useLocalStorage) {
-      // Use localStorage service
-      console.log('Creating user in localStorage mode');
-      await localStorageService.createUser(userData);
-      localStorage.setItem('nox-buddy-user', JSON.stringify(localUserData));
-      setSuccess(`Welcome ${userName}! (Offline mode)`);
-    } else {
-      // Use backend API
-      console.log('Creating user via backend API');
-      await axios.post(`${API_BASE}/users/`, userData);
-      localStorage.setItem('nox-buddy-user', JSON.stringify(localUserData));
-      setSuccess(`Welcome ${userName}!`);
-    }
+    localStorage.setItem('nox-buddy-user', JSON.stringify(localUserData));
+    setSuccess(`Welcome ${userName}!`);
     
     setTimeout(() => {
       setIsVisible(false);
@@ -220,7 +191,7 @@ const handleSignupSubmit = async () => {
     } else if (error.response?.status === 400) {
       setError('User with this secret code or email already exists');
     } else {
-      setError('Failed to create account. Please try again.');
+      setError('Failed to create account. Please ensure backend is running.');
     }
   }
 };
@@ -237,18 +208,11 @@ const handleSigninSubmit = async () => {
   setSuccess('Signing you in...');
 
   try {
-    let userData;
-    
-    if (useLocalStorage) {
-      // Use localStorage service
-      console.log('Signing in via localStorage mode');
-      userData = await localStorageService.getUser(secretCode);
-    } else {
-      // Use backend API
-      console.log('Signing in via backend API');
-      const response = await axios.get(`${API_BASE}/users/${secretCode}`);
-      userData = response.data;
-    }
+    // Use backend API - REQUIRED
+    console.log('Signing in via backend API');
+    const response = await axios.get(`${API_BASE}/users/${secretCode}`);
+    const userData = response.data;
+    console.log('✅ User authenticated from MongoDB:', userData);
     
     // Store in localStorage for session persistence
     const localUserData = {
@@ -260,13 +224,7 @@ const handleSigninSubmit = async () => {
     };
     
     localStorage.setItem('nox-buddy-user', JSON.stringify(localUserData));
-    
-    setError('');
-    if (useLocalStorage) {
-      setSuccess(`Welcome back, ${userData.name}! (Offline mode)`);
-    } else {
-      setSuccess(`Welcome back, ${userData.name}!`);
-    }
+    setSuccess(`Welcome back, ${userData.name}!`);
     
     setTimeout(() => {
       setIsVisible(false);
@@ -278,9 +236,40 @@ const handleSigninSubmit = async () => {
     if (error.message?.includes('not found') || error.response?.status === 404) {
       setError('Invalid secret code. Please try again or sign up.');
     } else {
-      setError('Failed to sign in. Please try again.');
+      setError('Failed to sign in. Please ensure backend is running.');
     }
     console.error('Signin error:', error);
+  }
+};
+
+// Handle forgot secret key lookup
+const handleForgotSecretKey = async () => {
+  if (!forgotEmail.trim()) {
+    setError('Please enter your email address');
+    return;
+  }
+
+  setError('');
+  setSuccess('Searching...');
+
+  try {
+    // Use backend API - REQUIRED
+    const response = await axios.post(`${API_BASE}/users/forgot-secret-key`, {
+      email: forgotEmail.trim(),
+      nox_id: null
+    });
+    
+    setRetrievedSecretKey(response.data);
+    setSuccess('Secret key found!');
+    setError('');
+  } catch (error) {
+    if (error.response?.status === 404 || error.message?.includes('not found')) {
+      setError('User does not exist with the provided email');
+    } else {
+      setError('Failed to retrieve secret key. Please ensure backend is running.');
+    }
+    setSuccess('');
+    console.error('Forgot secret key error:', error);
   }
 };
 
@@ -372,7 +361,7 @@ const handleSigninSubmit = async () => {
                   className="flex items-center justify-center"
                 >
                   <img 
-                    src={StremlyBlack}
+                    src="/images/Stremly_black.png"
                     alt="Nox-Buddy Logo" 
                     className="w-64 h-64 object-contain"
                   />
@@ -391,7 +380,7 @@ const handleSigninSubmit = async () => {
                       Welcome
                     </h1>
                     <p className="text-sm text-gray-500">
-                      {authMode === 'signup' ? 'Create your account to get started' : 'Sign in to continue'}
+                      {authMode === 'signup' ? 'Create your account to get started' : authMode === 'signin' ? 'Sign in to continue' : 'Retrieve your secret key'}
                     </p>
                   </div>
 
@@ -423,6 +412,8 @@ const handleSigninSubmit = async () => {
                         setAuthMode('signup');
                         setError('');
                         setSuccess('');
+                        setRetrievedSecretKey(null);
+                        setForgotEmail('');
                       }}
                       className={`flex-1 py-2 px-3 rounded-2xl text-xs font-semibold transition-all duration-300 ${
                         authMode === 'signup'
@@ -437,6 +428,8 @@ const handleSigninSubmit = async () => {
                         setAuthMode('signin');
                         setError('');
                         setSuccess('');
+                        setRetrievedSecretKey(null);
+                        setForgotEmail('');
                       }}
                       className={`flex-1 py-2 px-3 rounded-2xl text-xs font-semibold transition-all duration-300 ${
                         authMode === 'signin'
@@ -458,7 +451,96 @@ const handleSigninSubmit = async () => {
                       transition={{ duration: 0.3, ease: "easeInOut" }}
                       className="space-y-3"
                     >
-                      {authMode === 'signup' ? (
+                      {authMode === 'forgot' ? (
+                        // Forgot Secret Key Form
+                        <>
+                          {!retrievedSecretKey ? (
+                            // Email Input Form
+                            <>
+                              <div className="space-y-1.5">
+                                <label className="block text-xs font-semibold text-black">
+                                  Email Address
+                                </label>
+                                <input
+                                  type="email"
+                                  placeholder="Enter your registered email"
+                                  value={forgotEmail}
+                                  onChange={(e) => setForgotEmail(e.target.value)}
+                                  className="w-full px-3 py-2.5 rounded-2xl border border-gray-200 focus:outline-none focus:border-black text-xs transition-all duration-300"
+                                />
+                              </div>
+
+                              <button
+                                onClick={handleForgotSecretKey}
+                                disabled={!forgotEmail.trim()}
+                                className="w-full py-3 px-4 rounded-2xl bg-black text-white text-sm font-semibold transition-all duration-300 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+                              >
+                                Retrieve Secret Key
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setAuthMode('signin');
+                                  setError('');
+                                  setSuccess('');
+                                  setForgotEmail('');
+                                }}
+                                className="w-full text-xs text-gray-500 hover:text-black transition-colors mt-3 text-center"
+                              >
+                                Back to Sign In
+                              </button>
+                            </>
+                          ) : (
+                            // Secret Key Display
+                            <>
+                              <div className="space-y-3">
+                                {/* Success Message */}
+                                <div className="text-center mb-4">
+                                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </div>
+                                  <p className="text-sm font-semibold text-black">Account Found!</p>
+                                </div>
+
+                                {/* Name */}
+                                <div className="bg-gray-50 rounded-2xl p-3">
+                                  <p className="text-xs font-semibold text-gray-500 mb-1">Name</p>
+                                  <p className="text-sm font-semibold text-black">{retrievedSecretKey.name}</p>
+                                </div>
+
+                                {/* Email */}
+                                <div className="bg-gray-50 rounded-2xl p-3">
+                                  <p className="text-xs font-semibold text-gray-500 mb-1">Email</p>
+                                  <p className="text-sm font-semibold text-black">{retrievedSecretKey.email}</p>
+                                </div>
+
+                                {/* Secret Key */}
+                                <div className="bg-blue-50 rounded-2xl p-4 border-2 border-blue-200">
+                                  <p className="text-xs font-semibold text-blue-600 mb-2 text-center">Your Secret Key</p>
+                                  <p className="text-2xl font-bold text-black font-mono tracking-wider text-center">
+                                    {retrievedSecretKey.secret_code}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => {
+                                  setAuthMode('signin');
+                                  setError('');
+                                  setSuccess('');
+                                  setRetrievedSecretKey(null);
+                                  setForgotEmail('');
+                                }}
+                                className="w-full py-3 px-4 rounded-2xl bg-black text-white text-sm font-semibold transition-all duration-300 hover:bg-gray-800 mt-4"
+                              >
+                                Back to Sign In
+                              </button>
+                            </>
+                          )}
+                        </>
+                      ) : authMode === 'signup' ? (
                         // Signup Form
                         <>
                           {/* Secret Code Input */}
@@ -544,6 +626,20 @@ const handleSigninSubmit = async () => {
                           >
                             Sign In
                           </button>
+
+                          {/* Forgot Secret Key Link */}
+                          <button
+                            onClick={() => {
+                              setAuthMode('forgot');
+                              setError('');
+                              setSuccess('');
+                              setRetrievedSecretKey(null);
+                              setForgotEmail('');
+                            }}
+                            className="w-full text-xs text-gray-500 hover:text-black transition-colors mt-3 text-center"
+                          >
+                            Forgot your secret key?
+                          </button>
                         </>
                       )}
                     </motion.div>
@@ -552,6 +648,7 @@ const handleSigninSubmit = async () => {
               </div>
             </div>
           )}
+
         </motion.div>
       )}
     </AnimatePresence>

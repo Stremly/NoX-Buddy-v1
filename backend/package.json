@@ -1,0 +1,29 @@
+{
+  "name": "nox-buddy-backend",
+  "version": "2.0.0",
+  "description": "Nox-Buddy v2 Backend API - FastAPI server with MongoDB and localStorage fallback",
+  "main": "main.py",
+  "scripts": {
+    "dev": "uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "start": "uvicorn main:app --host 0.0.0.0 --port 8000",
+    "test": "pytest tests/ -v"
+  },
+  "keywords": [
+    "fastapi",
+    "mongodb",
+    "api",
+    "nox-buddy",
+    "backend"
+  ],
+  "author": "Nox-Buddy Team",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "python": ">=3.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/nox-buddy-v2"
+  }
+}

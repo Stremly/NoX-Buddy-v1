@@ -4,10 +4,10 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import noxServiceManager from '../../services/noxServiceManager';
-import StremlyBlack from '../../../public/images/Stremly_black.png'
+import StremlyBlack from '../../assets/images/Stremly_black.png'
 import axios from 'axios'
 
-const AppLoader = ({ onLoadingComplete, setProfileData, setUserData }) => {
+const AppLoader = ({ onLoadingComplete, setProfileData, setUserData, profileData }) => {
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState('Initializing...');
   const [isVisible, setIsVisible] = useState(true);
@@ -19,6 +19,8 @@ const AppLoader = ({ onLoadingComplete, setProfileData, setUserData }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [authMode, setAuthMode] = useState('signup');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [retrievedSecretKey, setRetrievedSecretKey] = useState(null);
   const API_BASE = 'http://localhost:8000';
 
 
@@ -260,16 +262,28 @@ const handleSigninSubmit = async () => {
     };
     
     localStorage.setItem('nox-buddy-user', JSON.stringify(localUserData));
+    setUserData(localUserData);
+setProfileData({
+  ...profileData,
+  personal: {
+    ...profileData.personal,
+    name: userData.name,
+    email: userData.email,
+    secretCode: secretCode
+  }
+});
+
+// Wait a tiny moment to ensure React applies state updates
+setTimeout(() => {
+  onLoadingComplete();   // now safe, Dashboard will have userData
+  setSuccess(`Welcome back, ${userData.name}!`);
+  setIsVisible(false);   // hide the loader UI
+}, 50);
+
     
-    setError('');
-    setSuccess(`Welcome back, ${userData.name}!`);
+
     
-    setTimeout(() => {
-      setIsVisible(false);
-      setTimeout(() => {
-        onLoadingComplete();
-      }, 500);
-    }, 1500);
+    
   } catch (error) {
     if (error.response?.status === 404) {
       setError('Invalid secret code. Please try again or sign up.');
@@ -279,6 +293,37 @@ const handleSigninSubmit = async () => {
     console.error('Signin error:', error);
   }
 };
+
+const handleForgotSecretKey = async () => {
+  if (!forgotEmail.trim()) {
+    setError('Please enter your email address');
+    return;
+  }
+
+  setError('');
+  setSuccess('Searching...');
+
+  try {
+    // Use backend API - REQUIRED
+    const response = await axios.post(`${API_BASE}/users/forgot-secret-key`, {
+      email: forgotEmail.trim(),
+      nox_id: null
+    });
+    
+    setRetrievedSecretKey(response.data);
+    setSuccess('Secret key found!');
+    setError('');
+  } catch (error) {
+    if (error.response?.status === 404 || error.message?.includes('not found')) {
+      setError('User does not exist with the provided email');
+    } else {
+      setError('Failed to retrieve secret key. Please ensure backend is running.');
+    }
+    setSuccess('');
+    console.error('Forgot secret key error:', error);
+  }
+};
+
 
 
   return (
@@ -292,8 +337,10 @@ const handleSigninSubmit = async () => {
           className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white"
         >
           {!showSecretCodeScreen ? (
+            
             // Loading Screen
             <div className="relative z-10 flex flex-col items-center space-y-6 w-full max-w-xs mx-auto px-6">
+             
               {/* App Name */}
               <motion.div
                 initial={{ opacity: 0, y: -20 }}
@@ -308,7 +355,7 @@ const handleSigninSubmit = async () => {
                     color: '#1B365D'
                   }}
                 >
-                  Nox-Buddy
+                  NoX
                 </h1>
               </motion.div>
 
@@ -387,7 +434,7 @@ const handleSigninSubmit = async () => {
                       Welcome
                     </h1>
                     <p className="text-sm text-gray-500">
-                      {authMode === 'signup' ? 'Create your account to get started' : 'Sign in to continue'}
+                      {authMode === 'signup' ? 'Create your account to get started' : authMode === 'signin' ? 'Sign in to continue' : 'Retrieve your secret key'}
                     </p>
                   </div>
 
@@ -419,6 +466,8 @@ const handleSigninSubmit = async () => {
                         setAuthMode('signup');
                         setError('');
                         setSuccess('');
+                        setRetrievedSecretKey(null);
+                        setForgotEmail('');
                       }}
                       className={`flex-1 py-2 px-3 rounded-2xl text-xs font-semibold transition-all duration-300 ${
                         authMode === 'signup'
@@ -433,6 +482,8 @@ const handleSigninSubmit = async () => {
                         setAuthMode('signin');
                         setError('');
                         setSuccess('');
+                        setRetrievedSecretKey(null);
+                        setForgotEmail('');
                       }}
                       className={`flex-1 py-2 px-3 rounded-2xl text-xs font-semibold transition-all duration-300 ${
                         authMode === 'signin'
@@ -454,7 +505,96 @@ const handleSigninSubmit = async () => {
                       transition={{ duration: 0.3, ease: "easeInOut" }}
                       className="space-y-3"
                     >
-                      {authMode === 'signup' ? (
+                      {authMode === 'forgot' ? (
+                        // Forgot Secret Key Form
+                        <>
+                          {!retrievedSecretKey ? (
+                            // Email Input Form
+                            <>
+                              <div className="space-y-1.5">
+                                <label className="block text-xs font-semibold text-black">
+                                  Email Address
+                                </label>
+                                <input
+                                  type="email"
+                                  placeholder="Enter your registered email"
+                                  value={forgotEmail}
+                                  onChange={(e) => setForgotEmail(e.target.value)}
+                                  className="w-full px-3 py-2.5 rounded-2xl border border-gray-200 focus:outline-none focus:border-black text-xs transition-all duration-300"
+                                />
+                              </div>
+
+                              <button
+                                onClick={handleForgotSecretKey}
+                                disabled={!forgotEmail.trim()}
+                                className="w-full py-3 px-4 rounded-2xl bg-black text-white text-sm font-semibold transition-all duration-300 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+                              >
+                                Retrieve Secret Key
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setAuthMode('signin');
+                                  setError('');
+                                  setSuccess('');
+                                  setForgotEmail('');
+                                }}
+                                className="w-full text-xs text-gray-500 hover:text-black transition-colors mt-3 text-center"
+                              >
+                                Back to Sign In
+                              </button>
+                            </>
+                          ) : (
+                            // Secret Key Display
+                            <>
+                              <div className="space-y-3">
+                                {/* Success Message */}
+                                <div className="text-center mb-4">
+                                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </div>
+                                  <p className="text-sm font-semibold text-black">Account Found!</p>
+                                </div>
+
+                                {/* Name */}
+                                <div className="bg-gray-50 rounded-2xl p-3">
+                                  <p className="text-xs font-semibold text-gray-500 mb-1">Name</p>
+                                  <p className="text-sm font-semibold text-black">{retrievedSecretKey.name}</p>
+                                </div>
+
+                                {/* Email */}
+                                <div className="bg-gray-50 rounded-2xl p-3">
+                                  <p className="text-xs font-semibold text-gray-500 mb-1">Email</p>
+                                  <p className="text-sm font-semibold text-black">{retrievedSecretKey.email}</p>
+                                </div>
+
+                                {/* Secret Key */}
+                                <div className="bg-blue-50 rounded-2xl p-4 border-2 border-blue-200">
+                                  <p className="text-xs font-semibold text-blue-600 mb-2 text-center">Your Secret Key</p>
+                                  <p className="text-2xl font-bold text-black font-mono tracking-wider text-center">
+                                    {retrievedSecretKey.secret_code}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => {
+                                  setAuthMode('signin');
+                                  setError('');
+                                  setSuccess('');
+                                  setRetrievedSecretKey(null);
+                                  setForgotEmail('');
+                                }}
+                                className="w-full py-3 px-4 rounded-2xl bg-black text-white text-sm font-semibold transition-all duration-300 hover:bg-gray-800 mt-4"
+                              >
+                                Back to Sign In
+                              </button>
+                            </>
+                          )}
+                        </>
+                      ) : authMode === 'signup' ? (
                         // Signup Form
                         <>
                           {/* Secret Code Input */}
@@ -540,6 +680,20 @@ const handleSigninSubmit = async () => {
                           >
                             Sign In
                           </button>
+
+                          {/* Forgot Secret Key Link */}
+                          <button
+                            onClick={() => {
+                              setAuthMode('forgot');
+                              setError('');
+                              setSuccess('');
+                              setRetrievedSecretKey(null);
+                              setForgotEmail('');
+                            }}
+                            className="w-full text-xs text-gray-500 hover:text-black transition-colors mt-3 text-center"
+                          >
+                            Forgot your secret key?
+                          </button>
                         </>
                       )}
                     </motion.div>
@@ -548,6 +702,7 @@ const handleSigninSubmit = async () => {
               </div>
             </div>
           )}
+
         </motion.div>
       )}
     </AnimatePresence>

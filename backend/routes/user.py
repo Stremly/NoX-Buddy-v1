@@ -1,9 +1,52 @@
 from fastapi import APIRouter, HTTPException, status, Query
 from typing import List, Optional
-from db import db
+from pydantic import BaseModel
+from db import db, is_mongodb_available
 from models.user import UserCreate, UserUpdate, UserResponse
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+# Request model for forgot secret key
+class ForgotSecretKeyRequest(BaseModel):
+    email: Optional[str] = None
+    nox_id: Optional[str] = None
+
+# ✅ Forgot secret key - retrieve by email or nox_id
+@router.post("/forgot-secret-key")
+async def forgot_secret_key(request: ForgotSecretKeyRequest):
+    if not request.email and not request.nox_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide either email or NOX ID"
+        )
+    
+    if not is_mongodb_available():
+        # localStorage mode - return 404 (frontend manages data)
+        raise HTTPException(
+            status_code=404,
+            detail="User not found. In localStorage mode, please check your browser's local storage."
+        )
+    
+    # Search by email or nox_id
+    query = {}
+    if request.email:
+        query["email"] = request.email
+    elif request.nox_id:
+        query["nox_id"] = request.nox_id
+    
+    user = await db.users.find_one(query)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User does not exist with the provided information"
+        )
+    
+    return {
+        "message": "Secret key retrieved successfully",
+        "secret_code": user.get("secret_code"),
+        "name": user.get("name", "User"),
+        "email": user.get("email")
+    }
 
 # ✅ Create user
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

@@ -46,55 +46,65 @@
     "wait-on": "^9.0.1"
   },
   "build": {
-  "appId": "com.noxbuddy.app",
-  "productName": "Nox-Buddy",
-  "directories": {
-    "output": "C:/Temp4/NoX-Buddy-Build"
-  },
-  "files": [
-    "dist/**/*",
-    "public/main/preload.cjs",
-    "public/main/electron.cjs",           
-    "node_modules/**/*"
-  ],
-  "extraResources": [
-    {
-      "from": "public/main/backend/",  
-      "to": "backend",
-      "filter": ["**/*"]
+    "appId": "com.noxbuddy.app",
+    "productName": "Nox-Buddy",
+    "directories": {
+      "output": "C:/Temp/NoX-Buddy-Build"
+    },
+    "files": [
+      "dist/**/*",
+      "public/main/preload.cjs",
+      "public/main/electron.cjs",
+      "node_modules/**/*",
+      "public/images/**/*" 
+    ],
+    "extraResources": [
+      {
+        "from": "public/main/backend/",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "public/main/icons/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/main/icons"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
-  ],
-  "mac": {
-    "category": "public.app-category.productivity",
-    "target": [
-      {
-        "target": "dmg",
-        "arch": ["x64", "arm64"]
-      }
-    ]
-  },
-  "win": {
-    "target": [
-      {
-        "target": "nsis",
-        "arch": ["x64", "ia32"]
-      }
-    ],
-    "icon": "public/main/icons/icon.ico"
-  },
-  "linux": {
-    "target": [
-      {
-        "target": "AppImage",
-        "arch": ["x64"]
-      }
-    ],
-    "icon": "public/main/icons"
-  },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true
   }
-}
-
 }

@@ -23,7 +23,6 @@ function createWindow() {
       webSecurity: true,
       preload: path.join(__dirname, 'preload.cjs')
     },
-    titleBarStyle: 'customButtonsOnHover',
     frame: false,
     resizable: false,
     movable: true,
@@ -82,7 +81,9 @@ function createTray() {
   if (process.platform !== 'win32') return;
 
   // Use a simple icon - you can replace with your own
-  const iconPath = path.join(__dirname, '../favicon.ico');
+  const iconPath = isDev
+  ? path.join(__dirname, '../images/favicon.ico')                  // dev
+  : path.join(process.resourcesPath, 'images/favicon.ico');   
   
   try {
     tray = new Tray(iconPath);
@@ -415,6 +416,23 @@ function sendMessageToNox(message) {
 }
 
 // IPC Handlers
+
+ipcMain.on('window:minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('window:maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  }
+});
+
+ipcMain.on('window:close', () => {
+  if (mainWindow) mainWindow.close();
+});
+
+
 ipcMain.handle('start-nox-backend', async () => {
   return await startNoxBackend();
 });

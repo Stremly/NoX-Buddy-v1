@@ -71,4 +71,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return { success: true, message: 'Electron API is working' };
   },
 
+  minimize: () => ipcRenderer.send('window:minimize'),
+  maximize: () => ipcRenderer.send('window:maximize'),
+  close: () => ipcRenderer.send('window:close'),
+
 });

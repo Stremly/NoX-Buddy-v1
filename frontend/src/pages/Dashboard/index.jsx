@@ -36,6 +36,14 @@ const Dashboard = ({profileData, setProfileData, userData, setUserData}) => {
   const [imageScale, setImageScale] = useState(1);
   const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
 
+  useEffect(() => {
+  const storedUserStr = localStorage.getItem('nox-buddy-user');
+  if (!storedUserStr) return; // not signed in yet
+  const storedUser = JSON.parse(storedUserStr);
+  setUserData(storedUser);
+}, []);
+
+
   // Reset expanded state when minimizing
   const resetMinimizedState = () => {
     setIsExpanded(false);
@@ -1141,14 +1149,14 @@ const handleSendMessage = async () => {
 
       {/* Main Dashboard */}
       {!isMinimized && (
-        <div className="h-screen w-full bg-white flex flex-col">
+        <div className="h-screen w-full bg-white flex flex-col pb-4">
           {/* Top Navigation Bar */}
           <div className="bg-white border-b border-gray-200 px-6 py-4">
             <div className="flex items-center justify-between">
               {/* Logo */}
               <div className="flex items-center space-x-3">
                 <img src={StremlyBlack} alt="Logo" className="w-10 h-auto" />
-                <h1 className="font-bold text-black text-lg">NoxBuddy</h1>
+                <h1 className="font-bold text-black text-lg">NoX</h1>
               </div>
 
               {/* Horizontal Navigation */}

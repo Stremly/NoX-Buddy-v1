@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AppLoader } from './components/Layout';
 import { Dashboard } from './pages';
 import { DragHandle } from './components/UI';
+import TitleBar from './components/TitleBar/index'
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -37,9 +38,15 @@ function App() {
 
   return (
     <>
+      
       <DragHandle />
-      {isLoading ? (
-        <AppLoader onLoadingComplete={handleLoadingComplete} setProfileData={setProfileData} setUserData={setUserData} />
+      <div className='mb-6'>
+        <TitleBar/>
+      </div>
+      
+      {isLoading || !userData ? (
+        
+        <AppLoader onLoadingComplete={handleLoadingComplete} setProfileData={setProfileData} setUserData={setUserData} profileData={profileData}  />
       ) : (
         <Dashboard profileData={profileData} setProfileData={setProfileData} userData={userData} setUserData={setUserData}/>
       )}
